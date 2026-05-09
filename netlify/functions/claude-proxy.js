@@ -10,9 +10,7 @@ exports.handler = async (event) => {
       body: '',
     };
   }
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
+ httpMethod !== 'POST'
   try {
     const requestBody = JSON.parse(event.body);
     console.log("Claude proxy called — model:", requestBody.model);
