@@ -172,10 +172,10 @@ ${resumeText.slice(0, 8000)}`
         .filter(Boolean),
       rate: parsed.rate || "",
     };
-  } catch {
+  }catch {
     return { primarySkills: [], secondarySkills: [], techSkills: [], rate: "" };
   }
-}
+
 
 // ── Airtable write-back ──────────────────────────────────────────
 async function updateOBMProfile(recordId, profile) {
