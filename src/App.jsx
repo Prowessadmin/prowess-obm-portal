@@ -15,7 +15,7 @@ const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
 
 // Cloudinary unsigned upload (avatars)
 const CLOUDINARY_CLOUD = "diwso2edi";
-const CLOUDINARY_PRESET = "prowess-obm-avatars";
+const CLOUDINARY_PRESET = "prowess_obm_avatars";
 
 // Assessment options (Airtable singleSelect — must match exactly)
 const DISC_OPTIONS = ["Dominance", "Influence", "Steadiness", "Conscientiousness"];
