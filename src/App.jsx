@@ -30,6 +30,7 @@ const F_MATCH_BUSDEV   = "flda8QSllZiwsHV7k";
 const F_MATCH_SCORE    = "fldxXrk9SIv1O8I44";
 const F_PLACEMENT_NOTE_STATUS = "fldpXXkmBjvPzuMN7";
 
+
 // ── Airtable helpers ─────────────────────────────────────────────
 async function airtableFetch(path, opts = {}) {
   // Route through Netlify function proxy — keeps API key server-side
@@ -102,7 +103,7 @@ async function getSkillTable(tableId, nameField) {
 
 // ── Claude API call ──────────────────────────────────────────────
 async function claudeParseResume(resumeText, primarySkills, secondarySkills, techSkills) {
-  const res = await fetch(AIRTABLE_API, {
+  const res = await fetch("/.netlify/functions/claude-proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -114,18 +115,15 @@ Format: {"primarySkills": ["skill1"], "secondarySkills": ["skill2"], "techSkills
       messages: [{
         role: "user",
         content: `Parse this resume and match skills to these exact taxonomies:
-
 PRIMARY SKILLS TAXONOMY: ${primarySkills.map(s => s.name).join(", ")}
 SECONDARY SKILLS TAXONOMY: ${secondarySkills.map(s => s.name).join(", ")}
 TECH SKILLS TAXONOMY: ${techSkills.map(s => s.name).join(", ")}
-
 Rules:
 - Only return skills that exist in the taxonomy OR are clearly equivalent to a taxonomy item
 - For tech: skip proprietary, niche, legacy, or rarely-used software
 - Match common equivalents (e.g. "G Suite" = "Google Workspace")
 - Education: extract highest degree + field
 - Industries: extract industries they have worked in
-
 RESUME:
 ${resumeText.slice(0, 8000)}`
       }]
@@ -134,9 +132,26 @@ ${resumeText.slice(0, 8000)}`
   const data = await res.json();
   const text = data.content?.[0]?.text || "{}";
   try {
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
+    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+    
+    // Map skill names back to option objects with IDs
+    const matchSkill = (name, options) => 
+      options.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
+    
+    return {
+      primarySkills: (parsed.primarySkills || [])
+        .map(name => matchSkill(name, primarySkills))
+        .filter(Boolean),
+      secondarySkills: (parsed.secondarySkills || [])
+        .map(name => matchSkill(name, secondarySkills))
+        .filter(Boolean),
+      techSkills: (parsed.techSkills || [])
+        .map(name => matchSkill(name, techSkills))
+        .filter(Boolean),
+      rate: parsed.rate || "",
+    };
   } catch {
-    return {};
+    return { primarySkills: [], secondarySkills: [], techSkills: [], rate: "" };
   }
 }
 
@@ -1247,6 +1262,8 @@ export default function OBMPortal() {
 
   // New profile / resume flow
   const [resumeText, setResumeText] = useState("");
+  const [resumeFile, setResumeFile] = useState(null);
+
   const [parsedSuggestions, setParsedSuggestions] = useState(null);
   const [parsing, setParsing] = useState(false);
 
@@ -1323,19 +1340,28 @@ export default function OBMPortal() {
 
   // Handle resume upload
   async function handleResumeUpload(file) {
-    if (!file) return;
-    const text = await file.text();
-    setResumeText(text);
-    setParsing(true);
-    try {
-      const suggestions = await claudeParseResume(text, primaryOptions, secondaryOptions, techOptions);
-      setParsedSuggestions(suggestions);
-    } catch (e) {
-      setError("Could not parse resume. Please select your skills manually below.");
-    } finally {
-      setParsing(false);
-    }
+  if (!file) return;
+  setResumeFile(file);
+  const text = await file.text();
+  setResumeText(text);
+  setParsing(true);
+  try {
+    const suggestions = await claudeParseResume(text, primaryOptions, secondaryOptions, techOptions);
+    // Apply suggestions to profile for review — don't save yet
+    setProfile(p => ({
+      ...p,
+      primarySkills: suggestions.primarySkills,
+      secondarySkills: suggestions.secondarySkills,
+      techSkills: suggestions.techSkills,
+      rate: suggestions.rate || p.rate,
+    }));
+    setParsedSuggestions(suggestions);
+  } catch (e) {
+    setError("Could not parse resume. Please select your skills manually below.");
+  } finally {
+    setParsing(false);
   }
+}
 
   // Handle save profile — works for both new and existing OBMs
   async function handleSaveProfile() {
