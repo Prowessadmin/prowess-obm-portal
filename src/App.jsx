@@ -175,7 +175,7 @@ ${resumeText.slice(0, 8000)}`
   }catch {
     return { primarySkills: [], secondarySkills: [], techSkills: [], rate: "" };
   }
-
+}
 
 // ── Airtable write-back ──────────────────────────────────────────
 async function updateOBMProfile(recordId, profile) {
