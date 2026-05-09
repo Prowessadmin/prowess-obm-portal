@@ -13,16 +13,79 @@ const TBL_TECH     = "tbliJ5Q4yU0m8EnsG";
 const TBL_INDUSTRY = "tbl2qU124blP8q1nv"; // Industry knowledge — linked from "Industry knowledge 2" on PM Profile
 const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
 
-// Spotlight field names
-const SPOT_FIELDS = [
-  { key: "Branding nickname",            label: "Branding Nickname",   multiline: false },
-  { key: "Skill 1",                      label: "Top Skill 1",         multiline: false },
-  { key: "Skill 2",                      label: "Top Skill 2",         multiline: false },
-  { key: "skill 3",                      label: "Top Skill 3",         multiline: false },
-  { key: "Industries or Niche",          label: "Industries / Niche",  multiline: false },
-  { key: "Greatest personal achievement",label: "Greatest Achievement",multiline: true  },
-  { key: "Who you are",                  label: "Who You Are",         multiline: true  },
+// Spotlight cards — grouped fields with helper text
+const SPOT_CARDS = [
+  {
+    title: "Moniker",
+    fields: [
+      { key: "Branding nickname", label: "Moniker", multiline: false,
+        helper: 'Give yourself a nickname or fun title. Examples: "Lead whisperer" or "Operations wrangler."' },
+    ],
+  },
+  {
+    title: "Top Skills",
+    fields: [
+      { key: "Skill 1", label: "Top Skill 1", multiline: false,
+        helper: "Your #1 area of Online Business Management strength. Examples: Automation, CRM implementation, Demand generation" },
+      { key: "Skill 2", label: "Top Skill 2", multiline: false,
+        helper: "Your second strongest area" },
+      { key: "skill 3", label: "Top Skill 3", multiline: false,
+        helper: "Your third strongest area" },
+    ],
+  },
+  {
+    title: "Success Metric",
+    fields: [
+      { key: "Please list a success metric for your acheivements", label: "Success Metric", multiline: true,
+        helper: 'In 2–3 sentences (40 words or less). Format: I (result) for (who) over (time period) by (tactic). Example: "I doubled revenue for my marketing client over 12 months by reengaging stale contacts."' },
+    ],
+  },
+  {
+    title: "Greatest Achievement",
+    fields: [
+      { key: "Greatest personal achievement", label: "Greatest Achievement", multiline: true,
+        helper: "In one sentence — share an achievement (personal or professional) that demonstrates your talent, grit, or specialties." },
+    ],
+  },
+  {
+    title: "What Success Looks Like",
+    fields: [
+      { key: "What success looks like", label: "What Success Looks Like", multiline: false,
+        helper: 'Finish this sentence: "Here\'s what success looks like working with me..."' },
+    ],
+  },
+  {
+    title: "Industries & Niche",
+    fields: [
+      { key: "Industries or Niche", label: "Industries & Niche", multiline: false,
+        helper: "Your dream client industries or business types. Example: Social justice, Interior Design, Wellness Coach" },
+    ],
+  },
+  {
+    title: "Who You Are",
+    fields: [
+      { key: "Who you are", label: "Who You Are", multiline: true,
+        helper: "Hobbies, traits, achievements — whatever you'd want a future client to know about the whole you." },
+    ],
+  },
+  {
+    title: "Favorite Tech Tools",
+    fields: [
+      { key: "Favorite tech tools", label: "Favorite Tech Tools", multiline: false,
+        helper: "The tools you love working with most" },
+    ],
+  },
+  {
+    title: "Testimonial",
+    fields: [
+      { key: "Testimonial", label: "Testimonial", multiline: true,
+        helper: "A testimonial from someone who understands your operations, project management, or technical skills." },
+    ],
+  },
 ];
+
+// Flat list for save / progress / draft init
+const SPOT_FIELDS = SPOT_CARDS.flatMap(c => c.fields);
 
 // PM Profile field names (as they appear in Airtable)
 const F_EMAIL      = "emai2";
@@ -1430,78 +1493,123 @@ export default function App() {
               }
             </div>}
 
-            {tab === "spotlight" && <div style={{paddingBottom: spotlightEditing ? 80 : 0}}>
-              <div className="info" style={{marginBottom:20}}>
-                Your Spotlight profile is how Prowess introduces you to clients. Make it personal — clients choose OBMs they connect with, not just ones with the right skills.
-              </div>
-
-              {spotlightLoading && !spotlightLoaded && (
-                <div style={{textAlign:"center",padding:"40px 0"}}>
-                  <div className="spin" style={{width:32,height:32,borderWidth:3,margin:"0 auto 14px"}}></div>
-                  <p style={{color:"#6B6B6B",fontSize:14}}>Loading your Spotlight...</p>
-                </div>
-              )}
-
-              {spotlightLoaded && !spotlightEditing && !spotlight && (
-                <div className="card" style={{textAlign:"center",padding:"40px 24px"}}>
-                  <div style={{fontSize:32,marginBottom:12}}>✨</div>
-                  <p style={{color:"#1A1A1A",fontSize:15,fontWeight:600,fontFamily:"Raleway,sans-serif",marginBottom:8}}>
-                    Your Spotlight isn't set up yet
-                  </p>
-                  <p style={{color:"#6B6B6B",fontSize:14,lineHeight:1.6,marginBottom:20,maxWidth:440,margin:"0 auto 20px"}}>
-                    Your spotlight profile hasn't been set up yet. Fill this in to help Prowess tell your story to clients.
-                  </p>
-                  <button className="btn btn-p" style={{width:"auto"}} onClick={() => {
-                    const blank = {};
-                    SPOT_FIELDS.forEach(s => { blank[s.key] = ""; });
-                    setSpotlightDraft(blank);
-                    setSpotlightEditing(true);
-                  }}>
-                    Set Up My Spotlight
-                  </button>
-                </div>
-              )}
-
-              {spotlightLoaded && !spotlightEditing && spotlight && (
-                <div>
-                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
-                    {spotlightSaved && <span className="ok" style={{marginRight:12,alignSelf:"center"}}>✓ Spotlight saved</span>}
-                    <button className="btn btn-g btn-sm" onClick={() => {
-                      const draft = {};
-                      SPOT_FIELDS.forEach(s => { draft[s.key] = spotlight.fields[s.key] || ""; });
-                      setSpotlightDraft(draft);
-                      setSpotlightEditing(true);
-                    }}>Edit Spotlight</button>
+            {tab === "spotlight" && (() => {
+              const spotFields = spotlight?.fields || {};
+              const filled = SPOT_FIELDS.filter(f => (spotlight ? spotFields[f.key] : false) && String(spotFields[f.key]).trim()).length;
+              const pct = Math.round((filled / SPOT_FIELDS.length) * 100);
+              const tier = pct > 70 ? "high" : pct >= 40 ? "mid" : "low";
+              const tierColor = tier === "high" ? "#7FBFB8" : tier === "mid" ? "#F59E0B" : "#C8C9CA";
+              const tierMessage =
+                tier === "high" ? "Looking great! A complete spotlight gets you noticed faster." :
+                tier === "mid"  ? "Good start — a few more details will help you stand out." :
+                                  "The more you share, the better Prowess can match you.";
+              return (
+                <div style={{paddingBottom: spotlightEditing ? 80 : 0}}>
+                  <div className="info" style={{marginBottom:20}}>
+                    Your Spotlight profile is how Prowess introduces you to clients. Be specific, be real, and be you — clients choose OBMs they connect with, not just ones with the right skills.
                   </div>
-                  {SPOT_FIELDS.map(s => {
-                    const val = spotlight.fields[s.key];
-                    return (
-                      <div key={s.key} className="card">
-                        <div className="ch"><span className="ct">{s.label}</span></div>
-                        {val
-                          ? <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
-                          : <span className="empty">Not set</span>
-                        }
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
 
-              {spotlightEditing && (
-                <div>
-                  {SPOT_FIELDS.map(s => (
-                    <div key={s.key} className="card ed">
-                      <div className="ch"><span className="ct on">{s.label}</span></div>
-                      {s.multiline
-                        ? <textarea className="fi" value={spotlightDraft[s.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [s.key]: e.target.value}))} style={{minHeight:120,resize:"vertical",lineHeight:1.6}} />
-                        : <input className="fi" value={spotlightDraft[s.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [s.key]: e.target.value}))} />
-                      }
+                  {spotlightLoading && !spotlightLoaded && (
+                    <div style={{textAlign:"center",padding:"40px 0"}}>
+                      <div className="spin" style={{width:32,height:32,borderWidth:3,margin:"0 auto 14px"}}></div>
+                      <p style={{color:"#6B6B6B",fontSize:14}}>Loading your Spotlight...</p>
                     </div>
-                  ))}
+                  )}
+
+                  {spotlightLoaded && !spotlightEditing && !spotlight && (
+                    <div className="card" style={{textAlign:"center",padding:"40px 24px"}}>
+                      <div style={{fontSize:32,marginBottom:12}}>✨</div>
+                      <p style={{color:"#1A1A1A",fontSize:15,fontWeight:600,fontFamily:"Raleway,sans-serif",marginBottom:8}}>
+                        Your Spotlight isn't set up yet
+                      </p>
+                      <p style={{color:"#6B6B6B",fontSize:14,lineHeight:1.6,marginBottom:20,maxWidth:440,margin:"0 auto 20px"}}>
+                        Your spotlight profile hasn't been set up yet. Fill this in to help Prowess tell your story to clients.
+                      </p>
+                      <button className="btn btn-p" style={{width:"auto"}} onClick={() => {
+                        const blank = {};
+                        SPOT_FIELDS.forEach(s => { blank[s.key] = ""; });
+                        setSpotlightDraft(blank);
+                        setSpotlightEditing(true);
+                      }}>
+                        Create My Spotlight
+                      </button>
+                    </div>
+                  )}
+
+                  {spotlightLoaded && !spotlightEditing && spotlight && (
+                    <div>
+                      {/* Completion bar */}
+                      <div style={{background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,padding:"16px 20px",marginBottom:20}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                          <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:13,color:"#1A1A1A"}}>
+                            Your spotlight is {pct}% complete
+                          </span>
+                          <span style={{fontSize:12,color:"#6B6B6B"}}>{filled} of {SPOT_FIELDS.length} fields</span>
+                        </div>
+                        <div style={{height:6,background:"#F1F2F2",borderRadius:999,overflow:"hidden",marginBottom:10}}>
+                          <div style={{height:"100%",width:`${pct}%`,background:tierColor,borderRadius:999,transition:"width .3s ease-out"}} />
+                        </div>
+                        <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.5}}>{tierMessage}</div>
+                      </div>
+
+                      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:12,gap:12}}>
+                        {spotlightSaved && <span className="ok">✓ Spotlight saved</span>}
+                        <button className="btn btn-g btn-sm" onClick={() => {
+                          const draft = {};
+                          SPOT_FIELDS.forEach(s => { draft[s.key] = spotFields[s.key] || ""; });
+                          setSpotlightDraft(draft);
+                          setSpotlightEditing(true);
+                        }}>Edit Spotlight</button>
+                      </div>
+
+                      {SPOT_CARDS.map(card => (
+                        <div key={card.title} className="card">
+                          <div className="ch"><span className="ct">{card.title}</span></div>
+                          <div style={{display:"grid",gap:14}}>
+                            {card.fields.map(fld => {
+                              const val = spotFields[fld.key];
+                              return (
+                                <div key={fld.key}>
+                                  {card.fields.length > 1 && (
+                                    <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:".08em",color:"#A0A0A0",marginBottom:4,fontFamily:"Raleway,sans-serif",fontWeight:600}}>{fld.label}</div>
+                                  )}
+                                  {val && String(val).trim()
+                                    ? <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
+                                    : <div style={{fontSize:14,color:"#A0A0A0",fontStyle:"italic"}}>Not added yet</div>
+                                  }
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {spotlightEditing && (
+                    <div>
+                      {SPOT_CARDS.map(card => (
+                        <div key={card.title} className="card ed">
+                          <div className="ch"><span className="ct on">{card.title}</span></div>
+                          <div style={{display:"grid",gap:18}}>
+                            {card.fields.map(fld => (
+                              <div key={fld.key}>
+                                {card.fields.length > 1 && <label className="fl">{fld.label}</label>}
+                                {fld.multiline
+                                  ? <textarea className="fi" value={spotlightDraft[fld.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [fld.key]: e.target.value}))} style={{minHeight:80,resize:"vertical",lineHeight:1.6}} />
+                                  : <input className="fi" value={spotlightDraft[fld.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [fld.key]: e.target.value}))} />
+                                }
+                                {fld.helper && <div style={{fontSize:12,color:"#6B6B6B",marginTop:6,lineHeight:1.5}}>{fld.helper}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>}
+              );
+            })()}
           </div>}
         </main>
 
