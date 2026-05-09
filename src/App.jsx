@@ -12,16 +12,13 @@ const F_MATCH_SCORE      = "fldxXrk9SIv1O8I44";
 const F_RATE             = "fldalR2oEciMrDMec";
 const F_RATE_TEXT        = "fldJS9eWEInztKDx9";
 
-// ── Airtable proxy fetch ─────────────────────────────────────────
 async function airtableFetch(path, opts = {}) {
   const isGet = !opts.method || opts.method === "GET";
   let proxyUrl;
   if (isGet) {
     const [basePath, queryPart] = path.split("?");
     const proxyParams = new URLSearchParams({ path: basePath });
-    if (queryPart) {
-      new URLSearchParams(queryPart).forEach((v, k) => proxyParams.append(k, v));
-    }
+    if (queryPart) new URLSearchParams(queryPart).forEach((v, k) => proxyParams.append(k, v));
     proxyUrl = `/.netlify/functions/airtable?${proxyParams.toString()}`;
   } else {
     const [basePath] = path.split("?");
@@ -32,10 +29,7 @@ async function airtableFetch(path, opts = {}) {
     headers: { "Content-Type": "application/json" },
     ...(opts.body ? { body: opts.body } : {}),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Airtable error ${res.status}: ${err}`);
-  }
+  if (!res.ok) { const err = await res.text(); throw new Error(`Airtable error ${res.status}: ${err}`); }
   return res.json();
 }
 
@@ -48,18 +42,13 @@ async function findOBMByEmail(email) {
 async function getMatchingRecords(pmRecordId) {
   const formula = `FIND("${pmRecordId}", ARRAYJOIN({PM Profile}, ","))`;
   const enc = encodeURIComponent(formula);
-  const data = await airtableFetch(
-    `/${TBL_MATCHING}?filterByFormula=${enc}&sort[0][field]=Created&sort[0][direction]=desc`
-  );
+  const data = await airtableFetch(`/${TBL_MATCHING}?filterByFormula=${enc}&sort[0][field]=Created&sort[0][direction]=desc`);
   return data.records || [];
 }
 
 async function getSkillTable(tableId, nameField) {
   const data = await airtableFetch(`/${tableId}?maxRecords=200`);
-  return (data.records || []).map(r => ({
-    id: r.id,
-    name: r.fields[nameField] || "",
-  })).filter(s => {
+  return (data.records || []).map(r => ({ id: r.id, name: r.fields[nameField] || "" })).filter(s => {
     if (!s.name) return false;
     if (/^[0-9a-f]{20,}$/i.test(s.name.trim())) return false;
     if (/^[0-9]+$/.test(s.name.trim())) return false;
@@ -68,8 +57,7 @@ async function getSkillTable(tableId, nameField) {
 }
 
 async function updateOBMProfile(recordId, profile) {
-  const rateNum = profile.rate !== "" && profile.rate !== null
-    ? parseFloat(profile.rate) : null;
+  const rateNum = profile.rate !== "" && profile.rate !== null ? parseFloat(profile.rate) : null;
   const fields = {
     "Primary-Secondary Skills Algo": profile.primarySkills.map(s => s.id),
     "Secondary Skills Algo": profile.secondarySkills.map(s => s.id),
@@ -83,13 +71,9 @@ async function updateOBMProfile(recordId, profile) {
     if (fields[k] === "" || fields[k] === null || fields[k] === undefined) delete fields[k];
     if (Array.isArray(fields[k]) && fields[k].length === 0) delete fields[k];
   });
-  return airtableFetch(`/${TBL_PM_PROFILE}/${recordId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ fields }),
-  });
+  return airtableFetch(`/${TBL_PM_PROFILE}/${recordId}`, { method: "PATCH", body: JSON.stringify({ fields }) });
 }
 
-// ── Claude resume parser ─────────────────────────────────────────
 async function claudeParseResume(resumeText, primarySkills, secondarySkills, techSkills) {
   const res = await fetch("/.netlify/functions/claude-proxy", {
     method: "POST",
@@ -119,8 +103,7 @@ ${resumeText.slice(0, 8000)}`
   const text = data.content?.[0]?.text || "{}";
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    const matchSkill = (name, options) =>
-      options.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const matchSkill = (name, options) => options.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
     return {
       primarySkills: (parsed.primarySkills || []).map(n => matchSkill(n, primarySkills)).filter(Boolean),
       secondarySkills: (parsed.secondarySkills || []).map(n => matchSkill(n, secondarySkills)).filter(Boolean),
@@ -132,14 +115,12 @@ ${resumeText.slice(0, 8000)}`
   }
 }
 
-// ── Brand colors ─────────────────────────────────────────────────
 const COLORS = {
   bg: "#FFFFFF", surface: "#F1F2F2", card: "#FFFFFF",
-  border: "#E0E1E1", borderDark: "#C8C9CA",
-  accent: "#7FBFB8", accentDark: "#5EA8A1", accentLight: "#E8F4F3",
+  border: "#E0E1E1", accent: "#7FBFB8", accentDark: "#5EA8A1", accentLight: "#E8F4F3",
   coral: "#F15D60", coralLight: "#FEF0F0",
   text: "#1A1A1A", textMuted: "#6B6B6B", textDim: "#A0A0A0",
-  success: "#5EA8A1", white: "#FFFFFF",
+  white: "#FFFFFF",
 };
 
 const css = `
@@ -151,7 +132,6 @@ const css = `
   .portal-wrap::after { content: ''; position: fixed; bottom: -140px; left: -140px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle, rgba(241,93,96,0.05) 0%, transparent 65%); pointer-events: none; z-index: 0; }
   .portal-header { padding: 16px 40px; border-bottom: 1px solid #E0E1E1; display: flex; align-items: center; justify-content: space-between; background: #FFFFFF; position: relative; z-index: 10; }
   .portal-main { flex: 1; padding: 48px 40px; max-width: 860px; margin: 0 auto; width: 100%; position: relative; z-index: 1; }
-  .logo-wrap { display: flex; align-items: center; gap: 14px; }
   .logo { font-family: 'Raleway', sans-serif; font-size: 13px; font-weight: 700; color: #1A1A1A; letter-spacing: 0.14em; text-transform: uppercase; line-height: 1.2; }
   .logo-sub { font-family: 'DM Sans', sans-serif; font-size: 10px; color: #7FBFB8; letter-spacing: 0.2em; text-transform: uppercase; margin-top: 3px; font-weight: 500; }
   .portal-hero { background: #7FBFB8; padding: 64px 40px 56px; text-align: center; position: relative; overflow: hidden; }
@@ -162,7 +142,7 @@ const css = `
   .hero-title { font-family: 'Raleway', sans-serif; font-size: 32px; font-weight: 700; color: #FFFFFF; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; position: relative; z-index: 1; }
   .hero-sub { font-size: 15px; color: rgba(255,255,255,0.8); font-weight: 300; letter-spacing: 0.04em; position: relative; z-index: 1; }
   .auth-wrap { max-width: 440px; margin: 0 auto; }
-  .auth-title { font-family: 'Raleway', sans-serif; font-size: 28px; font-weight: 700; color: #1A1A1A; margin-bottom: 8px; letter-spacing: 0.02em; }
+  .auth-title { font-family: 'Raleway', sans-serif; font-size: 28px; font-weight: 700; color: #1A1A1A; margin-bottom: 8px; }
   .auth-subtitle { color: #6B6B6B; font-size: 15px; margin-bottom: 36px; line-height: 1.6; }
   .field-group { margin-bottom: 20px; }
   .field-label { display: block; font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6B6B6B; margin-bottom: 8px; }
@@ -179,7 +159,7 @@ const css = `
   .error-msg { background: #FEF0F0; border: 1px solid rgba(241,93,96,0.3); color: #F15D60; padding: 12px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
   .info-msg { background: #E8F4F3; border: 1px solid rgba(127,191,184,0.4); color: #5EA8A1; padding: 12px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
   .profile-header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #E0E1E1; }
-  .profile-greeting { font-family: 'Raleway', sans-serif; font-size: 26px; font-weight: 700; color: #1A1A1A; margin-bottom: 4px; letter-spacing: 0.02em; }
+  .profile-greeting { font-family: 'Raleway', sans-serif; font-size: 26px; font-weight: 700; color: #1A1A1A; margin-bottom: 4px; }
   .profile-email { color: #6B6B6B; font-size: 14px; }
   .tab-nav { display: flex; gap: 0; margin-bottom: 28px; border-bottom: 2px solid #E0E1E1; }
   .tab-btn { padding: 12px 24px; background: transparent; border: none; border-bottom: 2px solid transparent; color: #6B6B6B; font-family: 'Raleway', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; margin-bottom: -2px; }
@@ -190,8 +170,11 @@ const css = `
   .section-title { font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #6B6B6B; }
   .skill-tags { display: flex; flex-wrap: wrap; gap: 8px; }
   .skill-tag { background: #E8F4F3; border: 1px solid rgba(127,191,184,0.4); color: #1F5C58; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
-  .skill-tag-remove { background: none; border: none; color: #3D8A85; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; display: flex; align-items: center; transition: color 0.15s; }
-  .skill-tag-remove:hover { color: #F15D60; }
+  .skill-tag-new { background: #7FBFB8; border: 1px solid #5EA8A1; color: #FFFFFF; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .skill-tag-remove { background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 16px; line-height: 1; padding: 0; display: flex; align-items: center; }
+  .skill-tag-remove:hover { color: #FFFFFF; }
+  .skill-tag-remove-muted { background: none; border: none; color: #3D8A85; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; display: flex; align-items: center; }
+  .skill-tag-remove-muted:hover { color: #F15D60; }
   .skill-option { background: #F1F2F2; border: 1px solid #E0E1E1; color: #6B6B6B; padding: 6px 12px; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
   .skill-option:hover { border-color: #7FBFB8; color: #7FBFB8; background: #E8F4F3; }
   .empty-state { color: #A0A0A0; font-size: 14px; font-style: italic; }
@@ -216,14 +199,21 @@ const css = `
   .text-success { color: #7FBFB8; font-size: 14px; font-weight: 500; }
   .rate-input-wrap { display: flex; align-items: center; border: 1.5px solid #E0E1E1; border-radius: 6px; background: #FFFFFF; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
   .rate-input-wrap:focus-within { border-color: #7FBFB8; box-shadow: 0 0 0 3px #E8F4F3; }
-  .rate-prefix, .rate-suffix { padding: 12px; background: #F1F2F2; color: #6B6B6B; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; border: none; white-space: nowrap; user-select: none; }
+  .rate-prefix, .rate-suffix { padding: 12px; background: #F1F2F2; color: #6B6B6B; font-size: 15px; font-weight: 500; border: none; white-space: nowrap; user-select: none; }
   .rate-prefix { border-right: 1px solid #E0E1E1; }
   .rate-suffix { border-left: 1px solid #E0E1E1; }
   .rate-input { flex: 1; background: transparent; border: none; padding: 12px 10px; color: #1A1A1A; font-family: 'DM Sans', sans-serif; font-size: 15px; outline: none; min-width: 0; }
-  .rate-input::placeholder { color: #A0A0A0; }
+  .suggestion-card { background: #FFFFFF; border: 2px solid #7FBFB8; border-radius: 8px; padding: 24px; margin-bottom: 16px; }
+  .suggestion-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .suggestion-title { font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #7FBFB8; }
+  .suggestion-count { background: #7FBFB8; color: #FFFFFF; font-family: 'Raleway', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px; letter-spacing: 0.06em; }
+  .action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+  .btn-teal-outline { background: transparent; border: 1.5px solid #7FBFB8; color: #5EA8A1; padding: 10px 18px; border-radius: 6px; font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
+  .btn-teal-outline:hover { background: #E8F4F3; }
+  .btn-teal-solid { background: #7FBFB8; border: none; color: #FFFFFF; padding: 10px 18px; border-radius: 6px; font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
+  .btn-teal-solid:hover { background: #5EA8A1; }
 `;
 
-// ── Skill categories ─────────────────────────────────────────────
 const SKILL_CATEGORIES = {
   "Operations & Strategy": ["Project Management","Process Improvement","Strategic planning","Resource Management","Corporate Operations","Risk management","Capacity Planning","Quality Assurance","Reporting","Document Management & Compliance Tracking","Meeting Management","Technical Project Management","Business Analysis","Research ","Scheduling","Executive Assistance","Agile ","Agile","Scrum","Grant writing"],
   "Finance & Accounting": ["Accounting","Bookkeeping","Budgeting","Financial Analytics","Financial reporting/modeling","Forecasting","Invoicing","Payroll management","Procurement","Mergers & Acquisitions ","Mergers & Acquisitions","Workers Compensation","Benefits Administration"],
@@ -260,7 +250,6 @@ function categorizeTech(name) {
   return "Other Tech";
 }
 
-// ── Status badge ─────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const map = {
     "Candidate Identified": ["status-identified", "Identified"],
@@ -274,6 +263,105 @@ function StatusBadge({ status }) {
   };
   const [cls, label] = map[status] || ["status-other", status || "Unknown"];
   return <span className={`status-badge ${cls}`}>{label}</span>;
+}
+
+// ── Resume Suggestions Review ─────────────────────────────────────
+function SuggestionReview({ suggestions, currentProfile, onAddToExisting, onReplaceAll, onStartManual, onReupload }) {
+  const [selected, setSelected] = useState({
+    primarySkills: [...suggestions.primarySkills],
+    secondarySkills: [...suggestions.secondarySkills],
+    techSkills: [...suggestions.techSkills],
+  });
+
+  const toggle = (field, skill) => {
+    const has = selected[field].some(s => s.id === skill.id);
+    setSelected(prev => ({
+      ...prev,
+      [field]: has ? prev[field].filter(s => s.id !== skill.id) : [...prev[field], skill],
+    }));
+  };
+
+  const totalFound = suggestions.primarySkills.length + suggestions.secondarySkills.length + suggestions.techSkills.length;
+  const totalSelected = selected.primarySkills.length + selected.secondarySkills.length + selected.techSkills.length;
+
+  const sections = [
+    { key: "primarySkills", label: "Primary Skills", skills: suggestions.primarySkills },
+    { key: "secondarySkills", label: "Secondary Skills", skills: suggestions.secondarySkills },
+    { key: "techSkills", label: "Technology Skills", skills: suggestions.techSkills },
+  ];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ background: "#E8F4F3", border: "1px solid rgba(127,191,184,0.4)", borderRadius: 8, padding: "16px 20px", marginBottom: 24 }}>
+        <div style={{ fontFamily: "Raleway, sans-serif", fontWeight: 700, fontSize: 14, color: "#1F5C58", marginBottom: 4 }}>
+          ✓ Claude found {totalFound} skill{totalFound !== 1 ? "s" : ""} on your resume
+        </div>
+        <div style={{ fontSize: 13, color: "#5EA8A1", lineHeight: 1.5 }}>
+          Review what was found below. Tap any skill to deselect it. Then choose how to apply them to your profile.
+        </div>
+      </div>
+
+      {/* Skill sections */}
+      {sections.map(({ key, label, skills }) => (
+        <div key={key} className="suggestion-card">
+          <div className="suggestion-header">
+            <span className="suggestion-title">{label}</span>
+            <span className="suggestion-count">{skills.length} found</span>
+          </div>
+          {skills.length === 0 ? (
+            <span className="empty-state">None found on your resume</span>
+          ) : (
+            <div className="skill-tags">
+              {skills.map(skill => {
+                const isSelected = selected[key].some(s => s.id === skill.id);
+                return (
+                  <button
+                    key={skill.id}
+                    onClick={() => toggle(key, skill)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "6px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                      cursor: "pointer", border: "none", transition: "all 0.15s",
+                      background: isSelected ? "#7FBFB8" : "#F1F2F2",
+                      color: isSelected ? "#FFFFFF" : "#A0A0A0",
+                      textDecoration: isSelected ? "none" : "line-through",
+                    }}
+                  >
+                    {isSelected ? "✓" : "✕"} {skill.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Action buttons */}
+      <div style={{ background: "#FAFAFA", border: "1px solid #E0E1E1", borderRadius: 8, padding: 20, marginBottom: 16 }}>
+        <div style={{ fontFamily: "Raleway, sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6B6B6B", marginBottom: 14 }}>
+          How would you like to apply these {totalSelected} skill{totalSelected !== 1 ? "s" : ""}?
+        </div>
+        <div className="action-row">
+          <button className="btn-teal-solid" onClick={() => onAddToExisting(selected)}>
+            ＋ Add to my existing skills
+          </button>
+          <button className="btn-teal-outline" onClick={() => onReplaceAll(selected)}>
+            Replace all my skills
+          </button>
+          <button
+            onClick={onStartManual}
+            style={{ background: "none", border: "none", color: "#A0A0A0", fontSize: 12, cursor: "pointer", textDecoration: "underline", padding: "10px 4px" }}>
+            Skip — edit manually instead
+          </button>
+        </div>
+      </div>
+
+      <button onClick={onReupload} style={{ background: "none", border: "none", color: "#A0A0A0", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+        Upload a different resume
+      </button>
+    </div>
+  );
 }
 
 // ── Categorized skill selector ────────────────────────────────────
@@ -297,7 +385,7 @@ function SkillSelector({ label, selected, options, onChange, editing }) {
         {selected.map(s => (
           <span key={s.id} className="skill-tag">
             {s.name}
-            {editing && <button className="skill-tag-remove" onClick={() => onChange(selected.filter(x => x.id !== s.id))}>×</button>}
+            {editing && <button className="skill-tag-remove-muted" onClick={() => onChange(selected.filter(x => x.id !== s.id))}>×</button>}
           </span>
         ))}
         {!selected.length && !editing && <span className="empty-state">No {label.toLowerCase()} added yet</span>}
@@ -312,7 +400,7 @@ function SkillSelector({ label, selected, options, onChange, editing }) {
             </div>
           ) : (
             <div>
-              {Object.entries(grouped).filter(([, skills]) => skills.length > 0).map(([cat, skills]) => (
+              {Object.entries(grouped).filter(([, s]) => s.length > 0).map(([cat, skills]) => (
                 <div key={cat} style={{ marginBottom: 12 }}>
                   <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "8px 0", cursor: "pointer", textAlign: "left" }}>
                     <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6B6B6B" }}>{cat} ({skills.length})</span>
@@ -334,7 +422,6 @@ function SkillSelector({ label, selected, options, onChange, editing }) {
   );
 }
 
-// ── Tech selector ─────────────────────────────────────────────────
 function TechSelector({ selected, options, onChange, editing }) {
   const [search, setSearch] = useState("");
   const [expandedCat, setExpandedCat] = useState(null);
@@ -355,7 +442,7 @@ function TechSelector({ selected, options, onChange, editing }) {
         {selected.map(s => (
           <span key={s.id} className="skill-tag">
             {s.name}
-            {editing && <button className="skill-tag-remove" onClick={() => onChange(selected.filter(x => x.id !== s.id))}>×</button>}
+            {editing && <button className="skill-tag-remove-muted" onClick={() => onChange(selected.filter(x => x.id !== s.id))}>×</button>}
           </span>
         ))}
         {!selected.length && !editing && <span className="empty-state">No tech skills added yet</span>}
@@ -370,7 +457,7 @@ function TechSelector({ selected, options, onChange, editing }) {
             </div>
           ) : (
             <div>
-              {Object.entries(grouped).filter(([, tools]) => tools.length > 0).map(([cat, tools]) => (
+              {Object.entries(grouped).filter(([, t]) => t.length > 0).map(([cat, tools]) => (
                 <div key={cat} style={{ marginBottom: 12 }}>
                   <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "8px 0", cursor: "pointer", textAlign: "left" }}>
                     <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6B6B6B" }}>{cat} ({tools.length})</span>
@@ -401,14 +488,13 @@ export default function OBMPortal() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("profile");
   const [editing, setEditing] = useState(false);
-  const [editMode, setEditMode] = useState(null);
+  const [editMode, setEditMode] = useState(null); // null | "resume" | "resume-review" | "manual"
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [primaryOptions, setPrimaryOptions] = useState([]);
   const [secondaryOptions, setSecondaryOptions] = useState([]);
   const [techOptions, setTechOptions] = useState([]);
   const [profile, setProfile] = useState({ primarySkills: [], secondarySkills: [], techSkills: [], hours: [], rate: "", notes: "" });
-  const [resumeFile, setResumeFile] = useState(null);
   const [parsedSuggestions, setParsedSuggestions] = useState(null);
   const [parsing, setParsing] = useState(false);
   const hoursOptions = ["5 hours per week", "10 hours per week", "20 hours per week", "30 hours per week"];
@@ -418,11 +504,8 @@ export default function OBMPortal() {
       getSkillTable(TBL_PRIMARY_SKILLS, "Skill Name"),
       getSkillTable(TBL_SECONDARY_SKILLS, "Label"),
       getSkillTable(TBL_TECH_SKILLS, "Tech name"),
-    ]).then(([p, s, t]) => {
-      setPrimaryOptions(p);
-      setSecondaryOptions(s);
-      setTechOptions(t);
-    }).catch(e => console.error("Failed to load skill taxonomy:", e));
+    ]).then(([p, s, t]) => { setPrimaryOptions(p); setSecondaryOptions(s); setTechOptions(t); })
+      .catch(e => console.error("Failed to load skill taxonomy:", e));
   }, []);
 
   async function handleEmailSubmit() {
@@ -460,24 +543,44 @@ export default function OBMPortal() {
 
   async function handleResumeUpload(file) {
     if (!file) return;
-    setResumeFile(file);
-    const text = await file.text();
     setParsing(true);
     try {
+      const text = await file.text();
       const suggestions = await claudeParseResume(text, primaryOptions, secondaryOptions, techOptions);
-      setProfile(p => ({
-        ...p,
-        primarySkills: suggestions.primarySkills,
-        secondarySkills: suggestions.secondarySkills,
-        techSkills: suggestions.techSkills,
-        rate: suggestions.rate || p.rate,
-      }));
       setParsedSuggestions(suggestions);
+      setEditMode("resume-review");
     } catch (e) {
       setError("Could not parse resume. Please select your skills manually below.");
     } finally {
       setParsing(false);
     }
+  }
+
+  function handleAddToExisting(selected) {
+    // Merge suggestions with existing — no duplicates
+    const mergeUnique = (existing, additions) => {
+      const ids = new Set(existing.map(s => s.id));
+      return [...existing, ...additions.filter(s => !ids.has(s.id))];
+    };
+    setProfile(p => ({
+      ...p,
+      primarySkills: mergeUnique(p.primarySkills, selected.primarySkills),
+      secondarySkills: mergeUnique(p.secondarySkills, selected.secondarySkills),
+      techSkills: mergeUnique(p.techSkills, selected.techSkills),
+    }));
+    setParsedSuggestions(null);
+    setEditMode("manual");
+  }
+
+  function handleReplaceAll(selected) {
+    setProfile(p => ({
+      ...p,
+      primarySkills: selected.primarySkills,
+      secondarySkills: selected.secondarySkills,
+      techSkills: selected.techSkills,
+    }));
+    setParsedSuggestions(null);
+    setEditMode("manual");
   }
 
   async function handleSaveProfile() {
@@ -505,20 +608,23 @@ export default function OBMPortal() {
     }
   }
 
+  function resetEdit() {
+    setEditing(false);
+    setEditMode(null);
+    setParsedSuggestions(null);
+    setError("");
+  }
+
   return (
     <>
       <style>{css}</style>
       <div className="portal-wrap">
         <header className="portal-header">
-          <div className="logo-wrap">
-            <div>
-              <div className="logo">Prowess Project</div>
-              <div className="logo-sub">OBM Profile Portal</div>
-            </div>
+          <div>
+            <div className="logo">Prowess Project</div>
+            <div className="logo-sub">OBM Profile Portal</div>
           </div>
-          {obm && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setStage("email"); setObm(null); setEmail(""); setError(""); setEditing(false); setEditMode(null); }}>Sign Out</button>
-          )}
+          {obm && <button className="btn btn-ghost btn-sm" onClick={() => { setStage("email"); setObm(null); setEmail(""); resetEdit(); }}>Sign Out</button>}
         </header>
         <div className="teal-bar"></div>
 
@@ -572,22 +678,26 @@ export default function OBMPortal() {
 
               {activeTab === "profile" && (
                 <>
+                  {/* Top nav buttons */}
                   <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
                     {!editing ? (
                       <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(true); setEditMode(null); }}>Edit Profile</button>
                     ) : editMode === null ? (
-                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(false); setEditMode(null); setParsedSuggestions(null); }}>Cancel</button>
+                      <button className="btn btn-ghost btn-sm" onClick={resetEdit}>Cancel</button>
+                    ) : editMode === "resume-review" ? (
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditMode("resume"); setParsedSuggestions(null); }}>← Back</button>
                     ) : (
-                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditMode(null); setParsedSuggestions(null); }}>← Back</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(null)}>← Back</button>
                     )}
                   </div>
 
+                  {/* Mode chooser */}
                   {editing && editMode === null && (
                     <div className="section-card" style={{ marginBottom: 24 }}>
                       <div className="section-header"><span className="section-title">How would you like to update your profile?</span></div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                         {[
-                          { mode: "resume", icon: "📄", title: "Upload Resume", desc: "Claude reads your resume and suggests skills automatically" },
+                          { mode: "resume", icon: "📄", title: "Upload Resume", desc: "Claude reads your resume and suggests skills to add" },
                           { mode: "manual", icon: "✏️", title: "Edit Manually", desc: "Browse skills by category and add or remove individually" },
                         ].map(({ mode, icon, title, desc }) => (
                           <button key={mode} onClick={() => setEditMode(mode)}
@@ -603,7 +713,8 @@ export default function OBMPortal() {
                     </div>
                   )}
 
-                  {editing && editMode === "resume" && !parsedSuggestions && (
+                  {/* Resume upload */}
+                  {editing && editMode === "resume" && (
                     <div className="section-card" style={{ marginBottom: 24 }}>
                       <div className="section-header"><span className="section-title">Upload Your Resume</span></div>
                       {parsing ? (
@@ -626,65 +737,71 @@ export default function OBMPortal() {
                     </div>
                   )}
 
-                  {editing && editMode === "resume" && parsedSuggestions && (
-                    <div className="info-msg" style={{ marginBottom: 16 }}>
-                      ✓ Resume parsed. Review and confirm your skills below, then save.
-                      <button onClick={() => setParsedSuggestions(null)} style={{ marginLeft: 12, background: "none", border: "none", color: "#5EA8A1", cursor: "pointer", fontSize: 13, textDecoration: "underline" }}>Re-upload</button>
-                    </div>
+                  {/* Resume review */}
+                  {editing && editMode === "resume-review" && parsedSuggestions && (
+                    <SuggestionReview
+                      suggestions={parsedSuggestions}
+                      currentProfile={profile}
+                      onAddToExisting={handleAddToExisting}
+                      onReplaceAll={handleReplaceAll}
+                      onStartManual={() => { setParsedSuggestions(null); setEditMode("manual"); }}
+                      onReupload={() => { setParsedSuggestions(null); setEditMode("resume"); }}
+                    />
                   )}
 
-                  <div className="section-card">
-                    <div className="section-header"><span className="section-title">Primary Skills</span></div>
-                    <SkillSelector label="Primary Skills" selected={profile.primarySkills} options={primaryOptions} onChange={v => setProfile(p => ({ ...p, primarySkills: v }))} editing={editing && (editMode === "manual" || (editMode === "resume" && !!parsedSuggestions))} />
-                  </div>
-
-                  <div className="section-card">
-                    <div className="section-header"><span className="section-title">Secondary Skills</span></div>
-                    <SkillSelector label="Secondary Skills" selected={profile.secondarySkills} options={secondaryOptions} onChange={v => setProfile(p => ({ ...p, secondarySkills: v }))} editing={editing && (editMode === "manual" || (editMode === "resume" && !!parsedSuggestions))} />
-                  </div>
-
-                  <div className="section-card">
-                    <div className="section-header"><span className="section-title">Technology Skills</span></div>
-                    <TechSelector selected={profile.techSkills} options={techOptions} onChange={v => setProfile(p => ({ ...p, techSkills: v }))} editing={editing && (editMode === "manual" || (editMode === "resume" && !!parsedSuggestions))} />
-                  </div>
-
-                  <div className="section-card">
-                    <div className="section-header"><span className="section-title">Availability</span></div>
-                    {editing && editMode === "manual" ? (
-                      <div className="skill-tags">
-                        {hoursOptions.map(h => (
-                          <button key={h} className={profile.hours.includes(h) ? "skill-tag" : "skill-option"}
-                            onClick={() => setProfile(p => ({ ...p, hours: p.hours.includes(h) ? p.hours.filter(x => x !== h) : [...p.hours, h] }))}
-                            style={{ cursor: "pointer", border: "none" }}>
-                            {profile.hours.includes(h) ? "✓ " : "+ "}{h}
-                          </button>
-                        ))}
+                  {/* Skills view — always visible, editable in manual mode */}
+                  {(editMode !== "resume-review") && (
+                    <>
+                      <div className="section-card">
+                        <div className="section-header"><span className="section-title">Primary Skills</span></div>
+                        <SkillSelector label="Primary Skills" selected={profile.primarySkills} options={primaryOptions} onChange={v => setProfile(p => ({ ...p, primarySkills: v }))} editing={editing && editMode === "manual"} />
                       </div>
-                    ) : (
-                      <div className="skill-tags">
-                        {profile.hours.length ? profile.hours.map(h => <span key={h} className="skill-tag">{h}</span>) : <span className="empty-state">Not set</span>}
+                      <div className="section-card">
+                        <div className="section-header"><span className="section-title">Secondary Skills</span></div>
+                        <SkillSelector label="Secondary Skills" selected={profile.secondarySkills} options={secondaryOptions} onChange={v => setProfile(p => ({ ...p, secondarySkills: v }))} editing={editing && editMode === "manual"} />
                       </div>
-                    )}
-                  </div>
-
-                  <div className="section-card">
-                    <div className="section-header"><span className="section-title">Details</span></div>
-                    {editing && editMode === "manual" ? (
-                      <div className="field-group" style={{ marginBottom: 0 }}>
-                        <label className="field-label">Preferred Hourly Rate</label>
-                        <div className="rate-input-wrap">
-                          <span className="rate-prefix">$</span>
-                          <input className="rate-input" type="number" min="0" placeholder="65" value={profile.rate} onChange={e => setProfile(p => ({ ...p, rate: e.target.value }))} />
-                          <span className="rate-suffix">/hr</span>
-                        </div>
+                      <div className="section-card">
+                        <div className="section-header"><span className="section-title">Technology Skills</span></div>
+                        <TechSelector selected={profile.techSkills} options={techOptions} onChange={v => setProfile(p => ({ ...p, techSkills: v }))} editing={editing && editMode === "manual"} />
                       </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 16, alignItems: "baseline" }}>
-                        <span style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#A0A0A0", width: 90, flexShrink: 0 }}>Rate</span>
-                        <span style={{ fontSize: 14, color: profile.rate ? "#1A1A1A" : "#A0A0A0" }}>{profile.rate ? `$${profile.rate}/hr` : "Not set"}</span>
+                      <div className="section-card">
+                        <div className="section-header"><span className="section-title">Availability</span></div>
+                        {editing && editMode === "manual" ? (
+                          <div className="skill-tags">
+                            {hoursOptions.map(h => (
+                              <button key={h} className={profile.hours.includes(h) ? "skill-tag" : "skill-option"}
+                                onClick={() => setProfile(p => ({ ...p, hours: p.hours.includes(h) ? p.hours.filter(x => x !== h) : [...p.hours, h] }))}
+                                style={{ cursor: "pointer", border: "none" }}>
+                                {profile.hours.includes(h) ? "✓ " : "+ "}{h}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="skill-tags">
+                            {profile.hours.length ? profile.hours.map(h => <span key={h} className="skill-tag">{h}</span>) : <span className="empty-state">Not set</span>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                      <div className="section-card">
+                        <div className="section-header"><span className="section-title">Details</span></div>
+                        {editing && editMode === "manual" ? (
+                          <div className="field-group" style={{ marginBottom: 0 }}>
+                            <label className="field-label">Preferred Hourly Rate</label>
+                            <div className="rate-input-wrap">
+                              <span className="rate-prefix">$</span>
+                              <input className="rate-input" type="number" min="0" placeholder="65" value={profile.rate} onChange={e => setProfile(p => ({ ...p, rate: e.target.value }))} />
+                              <span className="rate-suffix">/hr</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 16, alignItems: "baseline" }}>
+                            <span style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#A0A0A0", width: 90, flexShrink: 0 }}>Rate</span>
+                            <span style={{ fontSize: 14, color: profile.rate ? "#1A1A1A" : "#A0A0A0" }}>{profile.rate ? `$${profile.rate}/hr` : "Not set"}</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
@@ -716,10 +833,10 @@ export default function OBMPortal() {
           )}
         </main>
 
-        {editing && editMode !== null && stage === "profile" && (
+        {editing && editMode === "manual" && stage === "profile" && (
           <div className="save-bar">
             {saveSuccess && <span className="text-success">✓ Profile saved</span>}
-            <button className="btn btn-ghost" onClick={() => { setEditing(false); setEditMode(null); setParsedSuggestions(null); }}>Cancel</button>
+            <button className="btn btn-ghost" onClick={resetEdit}>Cancel</button>
             <button className="btn btn-primary" style={{ width: "auto" }} onClick={handleSaveProfile} disabled={saving}>
               {saving ? <><span className="spinner"></span> Saving...</> : "Save Changes"}
             </button>
