@@ -17,6 +17,10 @@ const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
 const CLOUDINARY_CLOUD = "diwso2edi";
 const CLOUDINARY_PRESET = "prowess-obm-avatars";
 
+// Assessment options (Airtable singleSelect — must match exactly)
+const DISC_OPTIONS = ["Dominance", "Influence", "Steadiness", "Conscientiousness"];
+const VARK_OPTIONS = ["Visual", "Aural", "Read/Write", "Kinesthetic", "Multimodal"];
+
 // Spotlight cards — grouped fields with helper text
 const SPOT_CARDS = [
   {
@@ -206,6 +210,9 @@ async function saveProfile(recordId, profile) {
     ...(profile.city  !== undefined && { [F_CITY]:  profile.city }),
     ...(profile.state !== undefined && { [F_STATE]: profile.state }),
     ...(profile.facts !== undefined && { [F_FACTS]: profile.facts }),
+    ...(profile.discPrimary   !== undefined && { "Primary Disc Trait":   profile.discPrimary   || null }),
+    ...(profile.discSecondary !== undefined && { "Secondary Disc Trait": profile.discSecondary || null }),
+    ...(profile.vark          !== undefined && { "Vark Style":           profile.vark          || null }),
     ...(profile.industries !== undefined && { "Industry knowledge 2": profile.industries.map(i => i.id) }),
   };
   // Remove empty arrays
@@ -1097,12 +1104,23 @@ export default function App() {
               {/* Personalized hero */}
               <div className="welcome-hero">
                 <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20,position:"relative",zIndex:1}}>
-                  {profile.photoUrl
-                    ? <img src={profile.photoUrl} alt="" style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(255,255,255,.6)"}} />
-                    : <div style={{width:56,height:56,borderRadius:"50%",background:"rgba(255,255,255,.25)",border:"2px solid rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
-                        {avatarInitial}
-                      </div>
-                  }
+                  <button
+                    type="button"
+                    onClick={uploadPhoto}
+                    disabled={photoUploading}
+                    title={profile.photoUrl ? "Change photo" : "Add a photo"}
+                    style={{position:"relative",background:"none",border:"none",padding:0,cursor:photoUploading?"wait":"pointer",borderRadius:"50%"}}
+                  >
+                    {profile.photoUrl
+                      ? <img src={profile.photoUrl} alt="" style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(255,255,255,.6)",display:"block"}} />
+                      : <div style={{width:56,height:56,borderRadius:"50%",background:"rgba(255,255,255,.25)",border:"2px solid rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
+                          {avatarInitial}
+                        </div>
+                    }
+                    <div style={{position:"absolute",bottom:-2,right:-2,width:22,height:22,borderRadius:"50%",background:"#fff",border:"2px solid #7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",color:"#5EA8A1",fontSize:10,boxShadow:"0 1px 3px rgba(0,0,0,.18)"}}>
+                      {photoUploading ? <span className="spin" style={{width:9,height:9,borderWidth:2}}></span> : "📷"}
+                    </div>
+                  </button>
                   <div>
                     <div style={{fontSize:13,color:"rgba(255,255,255,.75)",marginBottom:2}}>Welcome to Prowess</div>
                     <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,color:"#fff"}}>
@@ -1266,7 +1284,17 @@ export default function App() {
 
           {/* PROFILE */}
           {stage === "profile" && obm && <div style={{paddingBottom: ed ? 80 : 0}}>
-            <div className="ph"><h1 className="pg">{displayName}</h1><p className="pe">{email}</p></div>
+            <div className="ph">
+              <h1 className="pg">
+                {(() => {
+                  const h = new Date().getHours();
+                  const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+                  const first = (profile.firstName || displayName || "").trim().split(" ")[0];
+                  return first ? `Good ${tod}, ${first} 👋` : `Welcome back 👋`;
+                })()}
+              </h1>
+              <p className="pe">{email}</p>
+            </div>
             {err && <div className="err">{err}</div>}
 
             {/* Compact info card — basic info quick-edit */}
@@ -1510,6 +1538,19 @@ export default function App() {
                   <div className="ch"><span className={`ct ${ed?"on":""}`}>Details</span></div>
                   {ed ? (
                     <div style={{display:"grid",gap:16}}>
+                      {/* Profile photo */}
+                      <div>
+                        <label className="fl">Profile Photo</label>
+                        <div style={{display:"flex",alignItems:"center",gap:14}}>
+                          {profile.photoUrl
+                            ? <img src={profile.photoUrl} alt="" style={{width:72,height:72,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8",display:"block"}} />
+                            : <div style={{width:72,height:72,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>{avatarInitial}</div>
+                          }
+                          <button type="button" className="btn btn-g btn-sm" disabled={photoUploading} onClick={uploadPhoto}>
+                            {photoUploading ? <><span className="spin"></span> Uploading...</> : (profile.photoUrl ? "Change Photo" : "Upload Photo")}
+                          </button>
+                        </div>
+                      </div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                         <div>
                           <label className="fl">First Name</label>
@@ -1534,6 +1575,29 @@ export default function App() {
                         <label className="fl">Preferred Hourly Rate</label>
                         <div className="rate-wrap"><span className="rate-fix rate-l">$</span><input className="rate-in" type="number" min="0" placeholder="65" value={profile.rate} onChange={e => setProfile(p => ({...p,rate:e.target.value}))} /><span className="rate-fix rate-r">/hr</span></div>
                       </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <div>
+                          <label className="fl">DISC — Primary</label>
+                          <select className="fi" value={profile.discPrimary || ""} onChange={e => setProfile(p => ({...p,discPrimary:e.target.value || null}))}>
+                            <option value="">Not set</option>
+                            {DISC_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="fl">DISC — Secondary</label>
+                          <select className="fi" value={profile.discSecondary || ""} onChange={e => setProfile(p => ({...p,discSecondary:e.target.value || null}))}>
+                            <option value="">Not set</option>
+                            {DISC_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="fl">VARK Learning Style</label>
+                        <select className="fi" value={profile.vark || ""} onChange={e => setProfile(p => ({...p,vark:e.target.value || null}))}>
+                          <option value="">Not set</option>
+                          {VARK_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
                       <div>
                         <label className="fl">Facts &amp; Hobbies</label>
                         <textarea className="fi" placeholder="Share a little about yourself..." value={profile.facts} onChange={e => setProfile(p => ({...p,facts:e.target.value}))} style={{minHeight:100,resize:"vertical",lineHeight:1.6}} />
@@ -1545,6 +1609,8 @@ export default function App() {
                         ["Name", [profile.firstName, profile.lastName].filter(Boolean).join(" ")],
                         ["Location", [profile.city, profile.state].filter(Boolean).join(", ")],
                         ["Rate",     profile.rate ? `$${profile.rate}/hr` : ""],
+                        ["DISC", [profile.discPrimary, profile.discSecondary].filter(Boolean).join(" / ")],
+                        ["VARK Learning Style", profile.vark],
                         ["Facts & Hobbies", profile.facts],
                       ].map(([lbl, val]) => val ? (
                         <div key={lbl}>
@@ -1552,7 +1618,7 @@ export default function App() {
                           <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
                         </div>
                       ) : null)}
-                      {!profile.firstName && !profile.lastName && !profile.city && !profile.rate && !profile.facts && <span className="empty">No details added yet</span>}
+                      {!profile.firstName && !profile.lastName && !profile.city && !profile.rate && !profile.facts && !profile.discPrimary && !profile.vark && <span className="empty">No details added yet</span>}
                     </div>
                   )}
                 </div>
