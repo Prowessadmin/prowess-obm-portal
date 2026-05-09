@@ -75,7 +75,14 @@ async function findByEmail(email) {
 }
 
 async function getMatches(pmId) {
-  const f = encodeURIComponent(`FIND("${pmId}", ARRAYJOIN({PM Profile}, ","))`);
+  const formula = `AND(
+    FIND("${pmId}", ARRAYJOIN({PM Profile}, ",")),
+    {❇️ Trigger email to talent} = TRUE(),
+    {Application status} != "not a match",
+    {Application status} != "Pending Final Assessments",
+    {Application status} != "Profile & Scoring Complete"
+  )`;
+  const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc`);
   return d.records || [];
 }
@@ -331,7 +338,7 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .parse-bar{height:100%;width:0;background:linear-gradient(90deg,#7FBFB8,#5EA8A1);border-radius:999px;animation:parse-grow 4s cubic-bezier(.2,.8,.4,1) forwards}
 .parse-bar.done{width:100% !important;animation:none;transition:width .4s ease-out}
 @keyframes parse-grow{to{width:90%}}
-.parse-msg{color:#5EA8A1;font-size:14px;font-weight:500;margin:0;min-height:22px;transition:opacity .25s}
+.parse-msg{color:#6B6B6B;font-size:14px;font-weight:500;margin:0;min-height:22px;transition:opacity .25s}
 .save-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E0E1E1;padding:16px 40px;display:flex;align-items:center;justify-content:flex-end;gap:12px;z-index:100;box-shadow:0 -4px 16px rgba(0,0,0,.06)}
 .ok{color:#7FBFB8;font-size:14px;font-weight:500}
 .rate-wrap{display:flex;align-items:center;border:1.5px solid #E0E1E1;border-radius:6px;background:#fff;overflow:hidden}
@@ -408,33 +415,38 @@ const SKILL_DESCRIPTIONS = {
   "Performance Management": "Setting goals and reviewing team performance",
   "Financial Analytics": "Analyzing financial data to guide business decisions",
   "Quality Assurance": "Testing and ensuring standards are met consistently",
-  "Team communications": "Keeping teams aligned through clear, consistent updates",
-  "Onboarding": "Welcoming and ramping up new clients or team members",
-  "Scheduling": "Coordinating calendars, meetings, and deadlines",
-  "Budgeting": "Planning and tracking how money is spent",
-  "Resource Management": "Allocating people, tools, and time across work",
-  "Social media": "Planning and posting content across social channels",
-  "Content creation": "Writing, designing, and producing engaging content",
-  "Digital marketing": "Reaching customers through online channels",
-  "ClickUp": "All-in-one project management and collaboration platform",
-  "Asana": "Project and task management for team workflows",
-  "GoHighLevel": "All-in-one CRM and marketing platform",
-  "Airtable": "Spreadsheet-database hybrid for tracking workflows",
-  "Zapier": "Automating repetitive workflows between apps",
-  "Slack": "Team messaging and collaboration",
-  "Zoom": "Video conferencing and virtual meetings",
-  "Quickbooks Online": "Cloud accounting and bookkeeping software",
-  "Canva": "Visual design tool for graphics and marketing assets",
-  "Google Docs": "Cloud document creation and collaboration",
-  "Google Sheets": "Cloud spreadsheets for data and analysis",
+  "Account management": "Managing and growing relationships with existing clients",
+  "Scheduling": "Coordinating calendars, meetings, and team availability",
+  "Onboarding": "Setting up systems and processes for new clients or team members",
+  "Team communications": "Keeping teams aligned and informed across projects",
+  "Resource Management": "Allocating people, time, and budget across projects",
+  "Budgeting": "Building and managing financial budgets",
+  "Financial reporting/modeling": "Creating financial reports and projections",
+  "Digital marketing": "Running online marketing campaigns across channels",
+  "Social media": "Managing brand presence across social platforms",
+  "Content creation": "Writing and producing content for marketing",
+  "Data analytics": "Analyzing data to surface insights and inform decisions",
+  "System/tech Implementations": "Rolling out new tools and technology for a business",
+  "Slack": "Team messaging and async communication platform",
+  "Google Docs": "Cloud-based document creation and collaboration",
+  "Google Sheets": "Cloud-based spreadsheet and data management",
+  "Canva": "Visual design tool for marketing and brand assets",
+  "Quickbooks Online": "Cloud-based accounting and financial management",
+  "Asana": "Project and task management platform",
+  "ClickUp": "All-in-one project management and productivity platform",
+  "GoHighLevel": "CRM, marketing automation, and client management platform",
+  "Airtable": "Flexible database and project tracking platform",
+  "Zapier": "No-code automation tool connecting apps and workflows",
+  "Salesforce": "Enterprise CRM and sales management platform",
+  "Hubspot": "CRM, marketing, and sales platform",
 };
 
 function ParsingProgress({ complete }) {
   const messages = [
     "Reading your resume...",
-    "Identifying your skills...",
-    "Matching to our taxonomy...",
-    "Finding your industry experience...",
+    "Identifying your experience...",
+    "Matching skills to our taxonomy...",
+    "Finding your industry background...",
     "Almost done...",
   ];
   const [idx, setIdx] = useState(0);
@@ -505,7 +517,7 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
       <div>
         <div className="warn">
           <strong>No matching skills found</strong>
-          <p>Sage couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or the file couldn't be read correctly. Try editing manually or uploading a different file.</p>
+          <p>Prowess Scout couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or the file couldn't be read correctly. Try editing manually or uploading a different file.</p>
         </div>
         <div className="act-row">
           <button className="btn-ts" onClick={onManual}>Edit My Skills Manually</button>
@@ -518,9 +530,12 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
       <div>
         <div className="info" style={{marginBottom:24}}>
           <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>
-            ✓ Sage found {totalFound} skill{totalFound!==1?"s":""} on your resume
+            Here's what Prowess Scout found
           </strong>
-          These are the skills Sage identified from your resume. They're already selected — just tap any skill to remove it if it doesn't apply. You can add more in the next step.
+          ✓ Prowess Scout found {totalFound} skill{totalFound!==1?"s":""} on your resume.
+        </div>
+        <div style={{background:"#F8F8F8",border:"1px solid #E0E1E1",color:"#4A4A4A",padding:"14px 16px",borderRadius:8,fontSize:14,lineHeight:1.55,marginBottom:20}}>
+          These are the skills Prowess Scout identified from your resume. They're already selected — tap any skill to remove it if it doesn't apply. You'll have a chance to add more too.
         </div>
 
         {[["primarySkills","Primary Skills"],["secondarySkills","Secondary Skills"],["techSkills","Technology Skills"]].map(([key,lbl]) => (
@@ -582,9 +597,9 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
       <div>
         <div className="info" style={{marginBottom:24}}>
           <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>
-            A few quick questions
+            Prowess Scout has a few questions for you
           </strong>
-          These are high-demand skills for online business managers that weren't clearly on your resume. Answer honestly — this helps Prowess match you to the right clients.
+          These are high-demand skills for online business managers that weren't clearly on your resume. Answer honestly — this helps Prowess Scout match you to the right clients.
         </div>
 
         {[
@@ -707,7 +722,23 @@ export default function App() {
   const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
   const [parseComplete, setParseComplete] = useState(false);
+  const [onboardStep, setOnboardStep] = useState(1); // welcome onboarding: 1..4
+  const [onboardSaving, setOnboardSaving] = useState(false);
+  const [infoEditing, setInfoEditing] = useState(false);
+  const [infoSaving, setInfoSaving] = useState(false);
+  const [infoDraft, setInfoDraft] = useState({ city:"", state:"", rate:"", facts:"" });
   const hours = ["5 hours per week","10 hours per week","20 hours per week","30 hours per week"];
+
+  async function saveOnboardStep() {
+    setOnboardSaving(true);
+    try {
+      await saveProfile(obm.id, profile);
+    } catch (e) {
+      console.error("Onboarding save failed:", e);
+    } finally {
+      setOnboardSaving(false);
+    }
+  }
 
   async function login() {
     setErr("");
@@ -880,70 +911,137 @@ export default function App() {
                 </div>
                 <div className="welcome-title">Let's build your profile.</div>
                 <div className="welcome-sub">
-                  Your profile is how Prowess matches you to the right client opportunities. It takes about 2 minutes — and the best part is Sage does most of the work.
+                  Your profile is how Prowess matches you to the right client opportunities. It takes about 3 minutes — and the best part is Prowess Scout, powered by Claude, does most of the work.
                 </div>
               </div>
 
-              {/* What we already know */}
-              {(profile.discPrimary || profile.city) && (
-                <div className="welcome-card" style={{marginBottom:16}}>
-                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:14}}>
-                    What we already know about you
+              {/* Onboarding step card */}
+              <div className="welcome-card" style={{marginBottom:16}}>
+                {/* Progress */}
+                <div style={{marginBottom:24}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1"}}>
+                      Step {onboardStep} of 4
+                    </span>
                   </div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                    {(profile.city || profile.state) && (
-                      <span style={{background:"#F1F2F2",border:"1px solid #E0E1E1",color:"#4A4A4A",padding:"5px 12px",borderRadius:20,fontSize:13}}>
-                        📍 {[profile.city,profile.state].filter(Boolean).join(", ")}
-                      </span>
-                    )}
-                    {profile.discPrimary && (
-                      <span style={{background:"#E8F4F3",border:"1px solid rgba(127,191,184,.4)",color:"#1F5C58",padding:"5px 12px",borderRadius:20,fontSize:13,fontWeight:600}}>
-                        DISC: {profile.discPrimary}{profile.discSecondary?` / ${profile.discSecondary}`:""}
-                      </span>
-                    )}
-                    {profile.vark && (
-                      <span style={{background:"#F1F2F2",border:"1px solid #C8C9CA",color:"#4A4A4A",padding:"5px 12px",borderRadius:20,fontSize:13,fontWeight:600}}>
-                        VARK: {profile.vark}
-                      </span>
-                    )}
+                  <div style={{height:6,background:"#F1F2F2",borderRadius:999,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${(onboardStep/4)*100}%`,background:"linear-gradient(90deg,#7FBFB8,#5EA8A1)",borderRadius:999,transition:"width .3s ease-out"}} />
                   </div>
+                </div>
+
+                {/* Step 1: Location */}
+                {onboardStep === 1 && (
+                  <div>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,marginBottom:6,color:"#1A1A1A"}}>Where are you based?</div>
+                    <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.55,marginBottom:20}}>
+                      This helps Prowess match you to clients in your region or time zone.
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+                      <div>
+                        <label className="fl">City</label>
+                        <input className="fi" placeholder="Austin" value={profile.city} onChange={e => setProfile(p => ({...p, city:e.target.value}))} autoFocus />
+                      </div>
+                      <div>
+                        <label className="fl">State</label>
+                        <input className="fi" placeholder="Texas" value={profile.state} onChange={e => setProfile(p => ({...p, state:e.target.value}))} />
+                      </div>
+                    </div>
+                    <button className="btn btn-p" disabled={onboardSaving} onClick={async () => { await saveOnboardStep(); setOnboardStep(2); }}>
+                      {onboardSaving ? <><span className="spin"></span> Saving...</> : "Next →"}
+                    </button>
+                  </div>
+                )}
+
+                {/* Step 2: Target rate */}
+                {onboardStep === 2 && (
+                  <div>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,marginBottom:6,color:"#1A1A1A"}}>What's your target hourly rate?</div>
+                    <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.55,marginBottom:20}}>
+                      Don't worry about getting this perfect — you can always update it later. Most OBMs start between $50–$85/hr.
+                    </div>
+                    <div style={{marginBottom:20}}>
+                      <label className="fl">Preferred Hourly Rate</label>
+                      <div className="rate-wrap">
+                        <span className="rate-fix rate-l">$</span>
+                        <input className="rate-in" type="number" min="0" placeholder="65" value={profile.rate} onChange={e => setProfile(p => ({...p, rate:e.target.value}))} autoFocus />
+                        <span className="rate-fix rate-r">/hr</span>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:16}}>
+                      <button className="btn btn-p" style={{width:"auto",flex:1}} disabled={onboardSaving} onClick={async () => { await saveOnboardStep(); setOnboardStep(3); }}>
+                        {onboardSaving ? <><span className="spin"></span> Saving...</> : "Next →"}
+                      </button>
+                      <button onClick={() => setOnboardStep(3)} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:13,cursor:"pointer",textDecoration:"underline"}}>
+                        Skip for now
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Facts & hobbies */}
+                {onboardStep === 3 && (
+                  <div>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,marginBottom:6,color:"#1A1A1A"}}>Tell us a little about yourself</div>
+                    <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.55,marginBottom:20}}>
+                      This shows on your candidate card. Clients love knowing who they're working with beyond a resume.
+                    </div>
+                    <div style={{marginBottom:20}}>
+                      <label className="fl">Facts &amp; Hobbies</label>
+                      <textarea className="fi" placeholder="Share your background, interests, or anything that makes you you..." value={profile.facts} onChange={e => setProfile(p => ({...p, facts:e.target.value}))} style={{minHeight:120,resize:"vertical",lineHeight:1.6}} autoFocus />
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:16}}>
+                      <button className="btn btn-p" style={{width:"auto",flex:1}} disabled={onboardSaving} onClick={async () => { await saveOnboardStep(); setOnboardStep(4); }}>
+                        {onboardSaving ? <><span className="spin"></span> Saving...</> : "Next →"}
+                      </button>
+                      <button onClick={() => setOnboardStep(4)} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:13,cursor:"pointer",textDecoration:"underline"}}>
+                        Skip for now
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 4: Skills CTA */}
+                {onboardStep === 4 && (
+                  <div>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,marginBottom:6,color:"#1A1A1A"}}>Now let's build your skills</div>
+                    <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.55,marginBottom:20}}>
+                      Prowess Scout can read your resume and map your experience to our OBM skill taxonomy — or you can browse and add skills manually.
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                      <button className="btn btn-p" style={{fontSize:13}} onClick={() => {
+                        setEditing(true);
+                        setEMode("resume");
+                        setStage("profile");
+                      }}>
+                        📄 Let Prowess Scout Read My Resume
+                      </button>
+                      <button className="btn btn-g" style={{fontSize:13}} onClick={() => {
+                        setEditing(true);
+                        setEMode("manual");
+                        setStage("profile");
+                      }}>
+                        ✏️ Add Skills Manually
+                      </button>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <button onClick={() => setStage("profile")} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
+                        Skip for now — I'll do this later
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Back link */}
+              {onboardStep > 1 && (
+                <div style={{textAlign:"center",marginBottom:8}}>
+                  <button onClick={() => setOnboardStep(s => s - 1)} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
+                    ← Back
+                  </button>
                 </div>
               )}
 
-              {/* Meet Sage */}
-              <div className="welcome-card" style={{marginBottom:16,display:"flex",gap:16,alignItems:"flex-start"}}>
-                <div style={{width:48,height:48,borderRadius:"50%",background:"linear-gradient(135deg,#7FBFB8,#5EA8A1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,flexShrink:0}}>S</div>
-                <div>
-                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:15,marginBottom:4,color:"#1A1A1A"}}>
-                    Meet Sage
-                  </div>
-                  <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.6}}>
-                    Sage is the Prowess AI assistant. She reads your resume, identifies your skills, and matches your experience to our OBM skill taxonomy — so you don't have to start from a blank profile. You're always in control: she never saves anything without your review.
-                  </div>
-                </div>
-              </div>
-
-              {/* Steps */}
-              <div className="welcome-card" style={{marginBottom:24}}>
-                <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:8}}>
-                  Here's how it works
-                </div>
-                {[
-                  ["1","Upload your resume","Sage reads it and maps your experience to our skill taxonomy automatically."],
-                  ["2","Confirm your skills","Review what Sage found, add anything missing, answer a few quick yes/no questions."],
-                  ["3","You're matched","Prowess uses your profile to match you to the right client opportunities."],
-                ].map(([num,title,desc]) => (
-                  <div key={num} className="step-row">
-                    <div className="step-num">{num}</div>
-                    <div className="step-body">
-                      <div className="step-title">{title}</div>
-                      <div className="step-desc">{desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* What to expect */}
+              {/* What to expect — keep as reassurance */}
               <div className="welcome-card" style={{marginBottom:24,background:"#E8F4F3",borderColor:"rgba(127,191,184,.4)"}}>
                 <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:14}}>
                   What to expect
@@ -951,7 +1049,7 @@ export default function App() {
                 <ul style={{margin:0,padding:0,listStyle:"none",fontSize:14,lineHeight:1.6,color:"#1F5C58"}}>
                   {[
                     "This takes about 3 minutes.",
-                    "Sage will read your resume and match your experience to our skill taxonomy — you'll review everything before anything is saved.",
+                    "Prowess Scout will read your resume and match your experience to our skill taxonomy — you'll review everything before anything is saved.",
                     "Nothing is permanent — you can always edit your profile after.",
                     "Your profile is only visible to the Prowess team — never to clients until you're matched.",
                   ].map((line,i) => (
@@ -962,29 +1060,6 @@ export default function App() {
                   ))}
                 </ul>
               </div>
-
-              {/* CTA buttons */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-                <button className="btn btn-p" style={{fontSize:13}} onClick={() => {
-                  setEditing(true);
-                  setEMode("resume");
-                  setStage("profile");
-                }}>
-                  📄 Upload My Resume
-                </button>
-                <button className="btn btn-g" style={{fontSize:13}} onClick={() => {
-                  setEditing(true);
-                  setEMode("manual");
-                  setStage("profile");
-                }}>
-                  ✏️ Add Skills Manually
-                </button>
-              </div>
-              <div style={{textAlign:"center"}}>
-                <button onClick={() => setStage("profile")} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
-                  Skip for now — I'll do this later
-                </button>
-              </div>
             </div>
           )}
 
@@ -992,6 +1067,80 @@ export default function App() {
           {stage === "profile" && obm && <div style={{paddingBottom: ed ? 80 : 0}}>
             <div className="ph"><h1 className="pg">{obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}</h1><p className="pe">{email}</p></div>
             {err && <div className="err">{err}</div>}
+
+            {/* Compact info card — basic info quick-edit */}
+            {!editing && (
+              <div style={{background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,padding:infoEditing?"20px 24px":"14px 18px",marginBottom:20}}>
+                {!infoEditing ? (
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",fontSize:14,color:"#1A1A1A"}}>
+                      {(profile.city || profile.state) ? (
+                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>📍 {[profile.city, profile.state].filter(Boolean).join(", ")}</span>
+                      ) : (
+                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>📍 Add your location</span>
+                      )}
+                      {profile.rate ? (
+                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>💰 ${profile.rate}/hr</span>
+                      ) : (
+                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>💰 Add your rate</span>
+                      )}
+                    </div>
+                    <button className="btn-ts" style={{padding:"6px 14px",fontSize:11}} onClick={() => {
+                      setInfoDraft({ city: profile.city || "", state: profile.state || "", rate: profile.rate || "", facts: profile.facts || "" });
+                      setInfoEditing(true);
+                    }}>Edit Info</button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:14}}>
+                      Edit your info
+                    </div>
+                    <div style={{display:"grid",gap:14,marginBottom:18}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <div>
+                          <label className="fl">City</label>
+                          <input className="fi" placeholder="Austin" value={infoDraft.city} onChange={e => setInfoDraft(d => ({...d, city:e.target.value}))} />
+                        </div>
+                        <div>
+                          <label className="fl">State</label>
+                          <input className="fi" placeholder="Texas" value={infoDraft.state} onChange={e => setInfoDraft(d => ({...d, state:e.target.value}))} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="fl">Preferred Hourly Rate</label>
+                        <div className="rate-wrap">
+                          <span className="rate-fix rate-l">$</span>
+                          <input className="rate-in" type="number" min="0" placeholder="65" value={infoDraft.rate} onChange={e => setInfoDraft(d => ({...d, rate:e.target.value}))} />
+                          <span className="rate-fix rate-r">/hr</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="fl">Facts &amp; Hobbies</label>
+                        <textarea className="fi" placeholder="Share a little about yourself..." value={infoDraft.facts} onChange={e => setInfoDraft(d => ({...d, facts:e.target.value}))} style={{minHeight:90,resize:"vertical",lineHeight:1.6}} />
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:10}}>
+                      <button className="btn btn-p" style={{width:"auto"}} disabled={infoSaving} onClick={async () => {
+                        setInfoSaving(true);
+                        try {
+                          const next = { ...profile, city: infoDraft.city, state: infoDraft.state, rate: infoDraft.rate, facts: infoDraft.facts };
+                          await saveProfile(obm.id, next);
+                          setProfile(next);
+                          setInfoEditing(false);
+                        } catch (e) {
+                          setErr("Save failed: " + e.message);
+                        } finally {
+                          setInfoSaving(false);
+                        }
+                      }}>
+                        {infoSaving ? <><span className="spin"></span> Saving...</> : "Save"}
+                      </button>
+                      <button className="btn btn-g" style={{width:"auto"}} onClick={() => setInfoEditing(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="tabs">
               <button className={`tab ${tab==="profile"?"on":""}`} onClick={() => setTab("profile")}>My Profile</button>
@@ -1053,7 +1202,7 @@ export default function App() {
               {editing && eMode===null && <div className="card" style={{marginBottom:24}}>
                 <div className="ch"><span className="ct">How would you like to update your profile?</span></div>
                 <div className="mode-grid">
-                  {[["resume","📄","Upload Resume","Sage reads your resume and suggests skills to add"],
+                  {[["resume","📄","Let Prowess Scout Read Your Resume","Prowess Scout reads your resume and suggests skills to add"],
                     ["manual","✏️","Edit Manually","Browse by category, add or remove skills individually"]
                   ].map(([m,ic,ti,de]) => (
                     <button key={m} className="mode-btn" onClick={() => setEMode(m)}>
@@ -1067,7 +1216,7 @@ export default function App() {
 
               {/* Resume upload */}
               {editing && eMode==="resume" && <div className="card" style={{marginBottom:24}}>
-                <div className="ch"><span className="ct">Upload Your Resume</span></div>
+                <div className="ch"><span className="ct">Let Prowess Scout Read Your Resume</span></div>
                 {parsing
                   ? <ParsingProgress complete={parseComplete} />
                   : <label>
