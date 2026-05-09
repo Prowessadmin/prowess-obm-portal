@@ -416,6 +416,7 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
 
   const totalFound = found.primarySkills.length + found.secondarySkills.length + found.techSkills.length;
   const totalSelFound = selFound.primarySkills.length + selFound.secondarySkills.length + selFound.techSkills.length;
+  const industries = sug.industries || [];
 
   // Merge found + yes-answered maybe skills
   function buildFinalSelection() {
