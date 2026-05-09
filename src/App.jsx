@@ -475,6 +475,19 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
           </div>
         ))}
 
+        <div className="sug-card">
+          <div className="sug-hdr">
+            <span className="sug-lbl">Industry Experience</span>
+            <span className="sug-cnt">{industries.length} found</span>
+          </div>
+          {industries.length === 0
+            ? <span className="empty">None clearly identified from your resume</span>
+            : <div className="tags">
+                {industries.map(ind => <span key={ind} className="tag">{ind}</span>)}
+              </div>
+          }
+        </div>
+
         <div className="card" style={{marginBottom:16}}>
           <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:12,letterSpacing:".1em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:14}}>
             {totalSelFound} skill{totalSelFound!==1?"s":""} selected
