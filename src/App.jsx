@@ -94,6 +94,9 @@ async function saveProfile(recordId, profile) {
     [F_HOURS]:     profile.hours,
     ...(rate !== null && !isNaN(rate) && { [F_RATE]: rate }),
     ...(profile.rate && { [F_RATE_TEXT]: String(profile.rate) }),
+    ...(profile.city  !== undefined && { [F_CITY]:  profile.city }),
+    ...(profile.state !== undefined && { [F_STATE]: profile.state }),
+    ...(profile.facts !== undefined && { [F_FACTS]: profile.facts }),
   };
   // Remove empty arrays
   Object.keys(fields).forEach(k => {
