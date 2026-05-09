@@ -111,7 +111,7 @@ async function saveProfile(recordId, profile) {
   });
 }
 
-// ── Claude resume parser ─────────────────────────────────────────
+// ── Sage resume parser ─────────────────────────────────────────
 async function parseResume(text, pOpts, sOpts, tOpts, indOpts) {
   const res = await fetch("/.netlify/functions/claude-proxy", {
     method: "POST",
@@ -327,6 +327,11 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .upload-txt strong{color:#7FBFB8}
 .spin{width:20px;height:20px;border:2px solid rgba(127,191,184,.2);border-top-color:#7FBFB8;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
+.parse-track{height:6px;background:#F1F2F2;border-radius:999px;overflow:hidden;margin-bottom:18px}
+.parse-bar{height:100%;width:0;background:linear-gradient(90deg,#7FBFB8,#5EA8A1);border-radius:999px;animation:parse-grow 4s cubic-bezier(.2,.8,.4,1) forwards}
+.parse-bar.done{width:100% !important;animation:none;transition:width .4s ease-out}
+@keyframes parse-grow{to{width:90%}}
+.parse-msg{color:#5EA8A1;font-size:14px;font-weight:500;margin:0;min-height:22px;transition:opacity .25s}
 .save-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E0E1E1;padding:16px 40px;display:flex;align-items:center;justify-content:flex-end;gap:12px;z-index:100;box-shadow:0 -4px 16px rgba(0,0,0,.06)}
 .ok{color:#7FBFB8;font-size:14px;font-weight:500}
 .rate-wrap{display:flex;align-items:center;border:1.5px solid #E0E1E1;border-radius:6px;background:#fff;overflow:hidden}
@@ -390,6 +395,66 @@ function Badge({ s }) {
 }
 
 // ── Suggestion review screen (two-step) ──────────────────────────
+const SKILL_DESCRIPTIONS = {
+  "Project Management": "Planning and overseeing projects from start to finish",
+  "Process Improvement": "Documenting and optimizing how a business operates",
+  "CRM management": "Managing client pipelines and contact systems",
+  "Strategic planning": "Setting goals and building roadmaps for a business",
+  "Risk management": "Identifying and mitigating business risks",
+  "Customer Success": "Onboarding and retaining clients post-sale",
+  "Reporting": "Building dashboards and reporting on business metrics",
+  "Recruiting": "Sourcing, screening, and hiring team members",
+  "Training": "Creating and delivering training programs for teams",
+  "Performance Management": "Setting goals and reviewing team performance",
+  "Financial Analytics": "Analyzing financial data to guide business decisions",
+  "Quality Assurance": "Testing and ensuring standards are met consistently",
+  "Team communications": "Keeping teams aligned through clear, consistent updates",
+  "Onboarding": "Welcoming and ramping up new clients or team members",
+  "Scheduling": "Coordinating calendars, meetings, and deadlines",
+  "Budgeting": "Planning and tracking how money is spent",
+  "Resource Management": "Allocating people, tools, and time across work",
+  "Social media": "Planning and posting content across social channels",
+  "Content creation": "Writing, designing, and producing engaging content",
+  "Digital marketing": "Reaching customers through online channels",
+  "ClickUp": "All-in-one project management and collaboration platform",
+  "Asana": "Project and task management for team workflows",
+  "GoHighLevel": "All-in-one CRM and marketing platform",
+  "Airtable": "Spreadsheet-database hybrid for tracking workflows",
+  "Zapier": "Automating repetitive workflows between apps",
+  "Slack": "Team messaging and collaboration",
+  "Zoom": "Video conferencing and virtual meetings",
+  "Quickbooks Online": "Cloud accounting and bookkeeping software",
+  "Canva": "Visual design tool for graphics and marketing assets",
+  "Google Docs": "Cloud document creation and collaboration",
+  "Google Sheets": "Cloud spreadsheets for data and analysis",
+};
+
+function ParsingProgress({ complete }) {
+  const messages = [
+    "Reading your resume...",
+    "Identifying your skills...",
+    "Matching to our taxonomy...",
+    "Finding your industry experience...",
+    "Almost done...",
+  ];
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (complete) return;
+    const t = setInterval(() => {
+      setIdx(i => Math.min(i + 1, messages.length - 1));
+    }, 1500);
+    return () => clearInterval(t);
+  }, [complete]);
+  return (
+    <div style={{padding:"32px 8px",textAlign:"center"}}>
+      <div className="parse-track">
+        <div className={`parse-bar${complete?" done":""}`} />
+      </div>
+      <p className="parse-msg">{complete ? "Done — let's review what we found." : messages[idx]}</p>
+    </div>
+  );
+}
+
 function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReupload }) {
   const found = sug.found || { primarySkills:[], secondarySkills:[], techSkills:[] };
   const maybe = sug.maybe || { primarySkills:[], secondarySkills:[], techSkills:[] };
@@ -440,7 +505,7 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
       <div>
         <div className="warn">
           <strong>No matching skills found</strong>
-          <p>Claude couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or the file couldn't be read correctly. Try editing manually or uploading a different file.</p>
+          <p>Sage couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or the file couldn't be read correctly. Try editing manually or uploading a different file.</p>
         </div>
         <div className="act-row">
           <button className="btn-ts" onClick={onManual}>Edit My Skills Manually</button>
@@ -453,9 +518,9 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
       <div>
         <div className="info" style={{marginBottom:24}}>
           <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>
-            ✓ Claude found {totalFound} skill{totalFound!==1?"s":""} on your resume
+            ✓ Sage found {totalFound} skill{totalFound!==1?"s":""} on your resume
           </strong>
-          These are the skills most clearly shown on your resume. Tap any to deselect it.
+          These are the skills Sage identified from your resume. They're already selected — just tap any skill to remove it if it doesn't apply. You can add more in the next step.
         </div>
 
         {[["primarySkills","Primary Skills"],["secondarySkills","Secondary Skills"],["techSkills","Technology Skills"]].map(([key,lbl]) => (
@@ -501,6 +566,9 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
             <button onClick={onManual} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline",padding:"10px 4px"}}>Skip — edit manually</button>
           </div>
         </div>
+        <div style={{textAlign:"center",fontSize:12,color:"#5EA8A1",fontStyle:"italic",marginBottom:14}}>
+          Don't worry about getting it perfect — you can always edit your profile later.
+        </div>
         <button onClick={onReupload} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>Upload a different file</button>
       </div>
     );
@@ -514,9 +582,9 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
       <div>
         <div className="info" style={{marginBottom:24}}>
           <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>
-            Do you also have these skills?
+            A few quick questions
           </strong>
-          These are in-demand OBM skills that weren't clearly shown on your resume. Answer yes or no for each — it only takes a moment.
+          These are high-demand skills for online business managers that weren't clearly on your resume. Answer honestly — this helps Prowess match you to the right clients.
         </div>
 
         {[
@@ -540,7 +608,7 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
                       <div style={{fontFamily:"Raleway,sans-serif",fontWeight:600,fontSize:14,color:maybeAnswers[sk.id]===false?"#A0A0A0":"#1A1A1A",marginBottom:2}}>
                         {sk.name}
                       </div>
-                      <div style={{fontSize:12,color:"#6B6B6B"}}>Do you have experience with this?</div>
+                      <div style={{fontSize:12,color:"#6B6B6B",lineHeight:1.4}}>{SKILL_DESCRIPTIONS[sk.name] || "Common in operations management work"}</div>
                     </div>
                     <div style={{display:"flex",gap:8,flexShrink:0}}>
                       <button onClick={() => setMaybeAnswers(p => ({...p,[sk.id]:true}))} style={{padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,cursor:"pointer",border:"none",transition:"all 0.15s",background:maybeAnswers[sk.id]===true?"#7FBFB8":"#F1F2F2",color:maybeAnswers[sk.id]===true?"#FFFFFF":"#6B6B6B"}}>✓ Yes</button>
@@ -638,6 +706,7 @@ export default function App() {
   const [sug, setSug]       = useState(null);
   const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
+  const [parseComplete, setParseComplete] = useState(false);
   const hours = ["5 hours per week","10 hours per week","20 hours per week","30 hours per week"];
 
   async function login() {
@@ -706,11 +775,13 @@ export default function App() {
 
   async function upload(file) {
     if (!file) return;
-    setParsing(true); setErr("");
+    setParsing(true); setParseComplete(false); setErr("");
     try {
       const text = await extractText(file);
       if (text.length < 50) { setErr("Couldn't read this file — try a .txt or .docx version."); setParsing(false); return; }
       const result = await parseResume(text, pOpts, sOpts, tOpts, indOpts);
+      setParseComplete(true);
+      await new Promise(r => setTimeout(r, 500));
       setSug(result);
       setSugStep("found"); // "found" | "maybe"
       setEMode("review");
@@ -718,6 +789,7 @@ export default function App() {
       setErr("Resume parse failed: " + e.message);
     } finally {
       setParsing(false);
+      setParseComplete(false);
     }
   }
 
@@ -808,7 +880,7 @@ export default function App() {
                 </div>
                 <div className="welcome-title">Let's build your profile.</div>
                 <div className="welcome-sub">
-                  Your profile is how Prowess matches you to the right client opportunities. It takes about 2 minutes — and the best part is Claude does most of the work.
+                  Your profile is how Prowess matches you to the right client opportunities. It takes about 2 minutes — and the best part is Sage does most of the work.
                 </div>
               </div>
 
@@ -838,14 +910,27 @@ export default function App() {
                 </div>
               )}
 
+              {/* Meet Sage */}
+              <div className="welcome-card" style={{marginBottom:16,display:"flex",gap:16,alignItems:"flex-start"}}>
+                <div style={{width:48,height:48,borderRadius:"50%",background:"linear-gradient(135deg,#7FBFB8,#5EA8A1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,flexShrink:0}}>S</div>
+                <div>
+                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:15,marginBottom:4,color:"#1A1A1A"}}>
+                    Meet Sage
+                  </div>
+                  <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.6}}>
+                    Sage is the Prowess AI assistant. She reads your resume, identifies your skills, and matches your experience to our OBM skill taxonomy — so you don't have to start from a blank profile. You're always in control: she never saves anything without your review.
+                  </div>
+                </div>
+              </div>
+
               {/* Steps */}
               <div className="welcome-card" style={{marginBottom:24}}>
                 <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:8}}>
                   Here's how it works
                 </div>
                 {[
-                  ["1","Upload your resume","Claude reads it and maps your experience to our skill taxonomy automatically."],
-                  ["2","Confirm your skills","Review what Claude found, add anything missing, answer a few quick yes/no questions."],
+                  ["1","Upload your resume","Sage reads it and maps your experience to our skill taxonomy automatically."],
+                  ["2","Confirm your skills","Review what Sage found, add anything missing, answer a few quick yes/no questions."],
                   ["3","You're matched","Prowess uses your profile to match you to the right client opportunities."],
                 ].map(([num,title,desc]) => (
                   <div key={num} className="step-row">
@@ -856,6 +941,26 @@ export default function App() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* What to expect */}
+              <div className="welcome-card" style={{marginBottom:24,background:"#E8F4F3",borderColor:"rgba(127,191,184,.4)"}}>
+                <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:14}}>
+                  What to expect
+                </div>
+                <ul style={{margin:0,padding:0,listStyle:"none",fontSize:14,lineHeight:1.6,color:"#1F5C58"}}>
+                  {[
+                    "This takes about 3 minutes.",
+                    "Sage will read your resume and match your experience to our skill taxonomy — you'll review everything before anything is saved.",
+                    "Nothing is permanent — you can always edit your profile after.",
+                    "Your profile is only visible to the Prowess team — never to clients until you're matched.",
+                  ].map((line,i) => (
+                    <li key={i} style={{paddingLeft:24,position:"relative",marginBottom:10}}>
+                      <span style={{position:"absolute",left:0,top:0,color:"#7FBFB8",fontWeight:700,fontSize:15}}>✓</span>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
               </div>
 
               {/* CTA buttons */}
@@ -948,7 +1053,7 @@ export default function App() {
               {editing && eMode===null && <div className="card" style={{marginBottom:24}}>
                 <div className="ch"><span className="ct">How would you like to update your profile?</span></div>
                 <div className="mode-grid">
-                  {[["resume","📄","Upload Resume","Claude reads your resume and suggests skills to add"],
+                  {[["resume","📄","Upload Resume","Sage reads your resume and suggests skills to add"],
                     ["manual","✏️","Edit Manually","Browse by category, add or remove skills individually"]
                   ].map(([m,ic,ti,de]) => (
                     <button key={m} className="mode-btn" onClick={() => setEMode(m)}>
@@ -964,7 +1069,7 @@ export default function App() {
               {editing && eMode==="resume" && <div className="card" style={{marginBottom:24}}>
                 <div className="ch"><span className="ct">Upload Your Resume</span></div>
                 {parsing
-                  ? <div style={{textAlign:"center",padding:"40px 0"}}><div className="spin" style={{width:32,height:32,borderWidth:3,margin:"0 auto 16px"}}></div><p style={{color:"#6B6B6B"}}>Claude is reading your resume...</p></div>
+                  ? <ParsingProgress complete={parseComplete} />
                   : <label>
                       <div className="upload-zone" onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("over"); }} onDragLeave={e => e.currentTarget.classList.remove("over")} onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove("over"); upload(e.dataTransfer.files[0]); }}>
                         <div className="upload-icon">📄</div>
