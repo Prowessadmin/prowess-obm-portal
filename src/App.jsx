@@ -111,7 +111,7 @@ async function saveProfile(recordId, profile) {
 }
 
 // ── Claude resume parser ─────────────────────────────────────────
-async function parseResume(text, pOpts, sOpts, tOpts) {
+async function parseResume(text, pOpts, sOpts, tOpts, indOpts) {
   const res = await fetch("/.netlify/functions/claude-proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -135,6 +135,7 @@ Format: {
     "secondarySkills": ["exact name from taxonomy"],
     "techSkills": ["exact name from taxonomy"]
   },
+  "industries": ["exact name from taxonomy"],
   "rate": ""
 }`,
       messages: [{
@@ -162,6 +163,9 @@ PRIMARY SKILLS TAXONOMY: ${pOpts.map(s => s.name).join(" | ")}
 SECONDARY SKILLS TAXONOMY: ${sOpts.map(s => s.name).join(" | ")}
 TECH SKILLS TAXONOMY: ${tOpts.map(s => s.name).join(" | ")}
 
+INDUSTRY TAXONOMY (copy names exactly): ${indOpts.map(o => o.name).join(" | ")}
+For industries: extract all industries this person has worked in based on their job history. Only include industries from the taxonomy above.
+
 RESUME:
 ${text.slice(0, 8000)}`
       }]
@@ -179,13 +183,18 @@ ${text.slice(0, 8000)}`
     });
     const found = parsed.foundSkills || parsed;
     const maybe = parsed.maybeSkills || {};
+    // Map industry names against known options
+    const foundIndustries = (parsed.industries || [])
+      .map(n => indOpts.find(o => o.name.toLowerCase() === n.trim().toLowerCase())?.name)
+      .filter(Boolean);
     return {
       found: mapSkills(found, pOpts, sOpts, tOpts),
       maybe: mapSkills(maybe, pOpts, sOpts, tOpts),
+      industries: foundIndustries,
       rate: parsed.rate || "",
     };
   } catch {
-    return { found: { primarySkills:[], secondarySkills:[], techSkills:[] }, maybe: { primarySkills:[], secondarySkills:[], techSkills:[] }, rate: "" };
+    return { found: { primarySkills:[], secondarySkills:[], techSkills:[] }, maybe: { primarySkills:[], secondarySkills:[], techSkills:[] }, industries: [], rate: "" };
   }
 }
 
@@ -687,7 +696,7 @@ export default function App() {
     try {
       const text = await extractText(file);
       if (text.length < 50) { setErr("Couldn't read this file — try a .txt or .docx version."); setParsing(false); return; }
-      const result = await parseResume(text, pOpts, sOpts, tOpts);
+      const result = await parseResume(text, pOpts, sOpts, tOpts, indOpts);
       setSug(result);
       setSugStep("found"); // "found" | "maybe"
       setEMode("review");
@@ -700,12 +709,25 @@ export default function App() {
 
   function addToExisting(sel) {
     const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...b.filter(x => !ids.has(x.id))]; };
-    setProfile(p => ({ ...p, primarySkills: merge(p.primarySkills, sel.primarySkills), secondarySkills: merge(p.secondarySkills, sel.secondarySkills), techSkills: merge(p.techSkills, sel.techSkills) }));
+    const mergeIndustries = (a, b) => { const s = new Set(a); return [...a, ...b.filter(x => !s.has(x))]; };
+    setProfile(p => ({
+      ...p,
+      primarySkills:   merge(p.primarySkills, sel.primarySkills),
+      secondarySkills: merge(p.secondarySkills, sel.secondarySkills),
+      techSkills:      merge(p.techSkills, sel.techSkills),
+      industries:      mergeIndustries(p.industries, sug.industries || []),
+    }));
     setSug(null); setSugStep("found"); setEMode("manual");
   }
 
   function replaceAll(sel) {
-    setProfile(p => ({ ...p, primarySkills: sel.primarySkills, secondarySkills: sel.secondarySkills, techSkills: sel.techSkills }));
+    setProfile(p => ({
+      ...p,
+      primarySkills:   sel.primarySkills,
+      secondarySkills: sel.secondarySkills,
+      techSkills:      sel.techSkills,
+      industries:      sug.industries || [],
+    }));
     setSug(null); setSugStep("found"); setEMode("manual");
   }
 
