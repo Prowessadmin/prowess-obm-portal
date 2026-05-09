@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 
-// ── Airtable config ──────────────────────────────────────────────
 const AIRTABLE_BASE = "appaOBVteWvtxFcKr";
 const TBL_PM_PROFILE     = "tbl9I3xX3zj9b7FqX";
 const TBL_MATCHING       = "tblIoFOOL5BShC3bg";
@@ -9,8 +8,6 @@ const TBL_SECONDARY_SKILLS = "tbljqaeAndASfnyc0";
 const TBL_TECH_SKILLS    = "tbliJ5Q4yU0m8EnsG";
 const F_MATCH_STATUS     = "fldmcFMJQ5uPCCrsE";
 const F_MATCH_SCORE      = "fldxXrk9SIv1O8I44";
-const F_RATE             = "fldalR2oEciMrDMec";
-const F_RATE_TEXT        = "fldJS9eWEInztKDx9";
 
 async function airtableFetch(path, opts = {}) {
   const isGet = !opts.method || opts.method === "GET";
@@ -74,6 +71,40 @@ async function updateOBMProfile(recordId, profile) {
   return airtableFetch(`/${TBL_PM_PROFILE}/${recordId}`, { method: "PATCH", body: JSON.stringify({ fields }) });
 }
 
+// ── Extract text from file (handles PDF via PDF.js) ───────────────
+async function extractTextFromFile(file) {
+  if (file.type === "application/pdf") {
+    try {
+      // Load PDF.js from CDN
+      if (!window.pdfjsLib) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let text = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(item => item.str).join(" ") + "\n";
+      }
+      return text;
+    } catch (e) {
+      console.error("PDF extraction failed:", e);
+      // Fall back to reading as text
+      return await file.text();
+    }
+  }
+  return await file.text();
+}
+
 async function claudeParseResume(resumeText, primarySkills, secondarySkills, techSkills) {
   const res = await fetch("/.netlify/functions/claude-proxy", {
     method: "POST",
@@ -86,7 +117,7 @@ Return ONLY valid JSON. No markdown, no explanation.
 Format: {"primarySkills": ["skill1"], "secondarySkills": ["skill2"], "techSkills": ["tool1"], "rate": "suggested rate if mentioned"}`,
       messages: [{
         role: "user",
-        content: `Parse this resume and match skills to these exact taxonomies:
+        content: `Parse this resume and match skills to these exact taxonomies.
 PRIMARY SKILLS TAXONOMY: ${primarySkills.map(s => s.name).join(", ")}
 SECONDARY SKILLS TAXONOMY: ${secondarySkills.map(s => s.name).join(", ")}
 TECH SKILLS TAXONOMY: ${techSkills.map(s => s.name).join(", ")}
@@ -94,7 +125,8 @@ Rules:
 - Only return skills that exist in the taxonomy or are clearly equivalent
 - For tech: skip proprietary, niche, legacy, or rarely-used software
 - Match common equivalents (e.g. "G Suite" = "Google Workspace")
-RESUME:
+- Be generous — if there is any reasonable match, include it
+RESUME TEXT:
 ${resumeText.slice(0, 8000)}`
       }]
     })
@@ -103,7 +135,8 @@ ${resumeText.slice(0, 8000)}`
   const text = data.content?.[0]?.text || "{}";
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    const matchSkill = (name, options) => options.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const matchSkill = (name, options) =>
+      options.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
     return {
       primarySkills: (parsed.primarySkills || []).map(n => matchSkill(n, primarySkills)).filter(Boolean),
       secondarySkills: (parsed.secondarySkills || []).map(n => matchSkill(n, secondarySkills)).filter(Boolean),
@@ -114,14 +147,6 @@ ${resumeText.slice(0, 8000)}`
     return { primarySkills: [], secondarySkills: [], techSkills: [], rate: "" };
   }
 }
-
-const COLORS = {
-  bg: "#FFFFFF", surface: "#F1F2F2", card: "#FFFFFF",
-  border: "#E0E1E1", accent: "#7FBFB8", accentDark: "#5EA8A1", accentLight: "#E8F4F3",
-  coral: "#F15D60", coralLight: "#FEF0F0",
-  text: "#1A1A1A", textMuted: "#6B6B6B", textDim: "#A0A0A0",
-  white: "#FFFFFF",
-};
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap');
@@ -166,17 +191,28 @@ const css = `
   .tab-btn.active { color: #7FBFB8; border-bottom-color: #7FBFB8; }
   .tab-btn:hover:not(.active) { color: #1A1A1A; }
   .section-card { background: #FFFFFF; border: 1px solid #E0E1E1; border-radius: 8px; padding: 24px; margin-bottom: 16px; }
+  .section-card.editing-active { border-color: #7FBFB8; background: #FAFFFE; }
   .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
   .section-title { font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #6B6B6B; }
+  .section-title.active { color: #5EA8A1; }
   .skill-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-  .skill-tag { background: #E8F4F3; border: 1px solid rgba(127,191,184,0.4); color: #1F5C58; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
-  .skill-tag-new { background: #7FBFB8; border: 1px solid #5EA8A1; color: #FFFFFF; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-  .skill-tag-remove { background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 16px; line-height: 1; padding: 0; display: flex; align-items: center; }
-  .skill-tag-remove:hover { color: #FFFFFF; }
-  .skill-tag-remove-muted { background: none; border: none; color: #3D8A85; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; display: flex; align-items: center; }
-  .skill-tag-remove-muted:hover { color: #F15D60; }
-  .skill-option { background: #F1F2F2; border: 1px solid #E0E1E1; color: #6B6B6B; padding: 6px 12px; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
-  .skill-option:hover { border-color: #7FBFB8; color: #7FBFB8; background: #E8F4F3; }
+
+  /* VIEW MODE — current skills (teal, readable) */
+  .skill-tag { background: #E8F4F3; border: 1px solid rgba(127,191,184,0.4); color: #1F5C58; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 4px; }
+
+  /* EDIT MODE — current skills (solid teal, with visible X) */
+  .skill-tag-edit { background: #7FBFB8; border: 1px solid #5EA8A1; color: #FFFFFF; padding: 6px 10px 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .skill-tag-delete { background: rgba(0,0,0,0.2); border: none; color: #FFFFFF; cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; transition: background 0.15s; flex-shrink: 0; }
+  .skill-tag-delete:hover { background: rgba(241,93,96,0.8); }
+
+  /* EDIT MODE — available options (gray outline, + prefix) */
+  .skill-option { background: #FFFFFF; border: 1.5px solid #C8C9CA; color: #4A4A4A; padding: 6px 12px; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+  .skill-option:hover { border-color: #7FBFB8; color: #1F5C58; background: #E8F4F3; }
+
+  /* SUGGESTION MODE — found skills */
+  .skill-suggested { background: #7FBFB8; border: 1px solid #5EA8A1; color: #FFFFFF; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+  .skill-suggested.deselected { background: #F1F2F2; border-color: #C8C9CA; color: #A0A0A0; text-decoration: line-through; }
+
   .empty-state { color: #A0A0A0; font-size: 14px; font-style: italic; }
   .role-card { background: #FFFFFF; border: 1px solid #E0E1E1; border-radius: 8px; padding: 20px 24px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; transition: border-color 0.2s; }
   .role-card:hover { border-color: #7FBFB8; }
@@ -203,15 +239,22 @@ const css = `
   .rate-prefix { border-right: 1px solid #E0E1E1; }
   .rate-suffix { border-left: 1px solid #E0E1E1; }
   .rate-input { flex: 1; background: transparent; border: none; padding: 12px 10px; color: #1A1A1A; font-family: 'DM Sans', sans-serif; font-size: 15px; outline: none; min-width: 0; }
+  .rate-input::placeholder { color: #A0A0A0; }
   .suggestion-card { background: #FFFFFF; border: 2px solid #7FBFB8; border-radius: 8px; padding: 24px; margin-bottom: 16px; }
   .suggestion-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .suggestion-title { font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #7FBFB8; }
-  .suggestion-count { background: #7FBFB8; color: #FFFFFF; font-family: 'Raleway', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px; letter-spacing: 0.06em; }
+  .suggestion-label { font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #5EA8A1; }
+  .suggestion-count { background: #7FBFB8; color: #FFFFFF; font-family: 'Raleway', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px; }
   .action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
-  .btn-teal-outline { background: transparent; border: 1.5px solid #7FBFB8; color: #5EA8A1; padding: 10px 18px; border-radius: 6px; font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
-  .btn-teal-outline:hover { background: #E8F4F3; }
   .btn-teal-solid { background: #7FBFB8; border: none; color: #FFFFFF; padding: 10px 18px; border-radius: 6px; font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
   .btn-teal-solid:hover { background: #5EA8A1; }
+  .btn-teal-outline { background: transparent; border: 1.5px solid #7FBFB8; color: #5EA8A1; padding: 10px 18px; border-radius: 6px; font-family: 'Raleway', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
+  .btn-teal-outline:hover { background: #E8F4F3; }
+  .edit-legend { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; padding: 10px 14px; background: #F8FFFE; border: 1px solid rgba(127,191,184,0.2); border-radius: 6px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6B6B; }
+  .legend-dot-teal { width: 10px; height: 10px; border-radius: 50%; background: #7FBFB8; flex-shrink: 0; }
+  .legend-dot-gray { width: 10px; height: 10px; border-radius: 50%; background: #C8C9CA; flex-shrink: 0; }
+  .divider-label { font-size: 11px; font-family: 'Raleway', sans-serif; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #A0A0A0; margin: 16px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .divider-label::before, .divider-label::after { content: ''; flex: 1; height: 1px; background: #E0E1E1; }
 `;
 
 const SKILL_CATEGORIES = {
@@ -265,8 +308,8 @@ function StatusBadge({ status }) {
   return <span className={`status-badge ${cls}`}>{label}</span>;
 }
 
-// ── Resume Suggestions Review ─────────────────────────────────────
-function SuggestionReview({ suggestions, currentProfile, onAddToExisting, onReplaceAll, onStartManual, onReupload }) {
+// ── Resume Suggestion Review ──────────────────────────────────────
+function SuggestionReview({ suggestions, onAddToExisting, onReplaceAll, onStartManual, onReupload }) {
   const [selected, setSelected] = useState({
     primarySkills: [...suggestions.primarySkills],
     secondarySkills: [...suggestions.secondarySkills],
@@ -284,50 +327,58 @@ function SuggestionReview({ suggestions, currentProfile, onAddToExisting, onRepl
   const totalFound = suggestions.primarySkills.length + suggestions.secondarySkills.length + suggestions.techSkills.length;
   const totalSelected = selected.primarySkills.length + selected.secondarySkills.length + selected.techSkills.length;
 
+  // No skills found
+  if (totalFound === 0) {
+    return (
+      <div>
+        <div style={{ background: "#FFF8EC", border: "1px solid rgba(176,125,42,0.3)", borderRadius: 8, padding: "20px 24px", marginBottom: 24 }}>
+          <div style={{ fontFamily: "Raleway, sans-serif", fontWeight: 700, fontSize: 14, color: "#8A5E1A", marginBottom: 6 }}>
+            No matching skills found
+          </div>
+          <div style={{ fontSize: 13, color: "#8A5E1A", lineHeight: 1.6 }}>
+            Claude couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or if the file couldn't be read correctly. Try editing manually or uploading a different file.
+          </div>
+        </div>
+        <div className="action-row">
+          <button className="btn-teal-solid" onClick={onStartManual}>Edit My Skills Manually</button>
+          <button className="btn-teal-outline" onClick={onReupload}>Try a Different File</button>
+        </div>
+      </div>
+    );
+  }
+
   const sections = [
-    { key: "primarySkills", label: "Primary Skills", skills: suggestions.primarySkills },
-    { key: "secondarySkills", label: "Secondary Skills", skills: suggestions.secondarySkills },
-    { key: "techSkills", label: "Technology Skills", skills: suggestions.techSkills },
+    { key: "primarySkills", label: "Primary Skills" },
+    { key: "secondarySkills", label: "Secondary Skills" },
+    { key: "techSkills", label: "Technology Skills" },
   ];
 
   return (
     <div>
-      {/* Header */}
       <div style={{ background: "#E8F4F3", border: "1px solid rgba(127,191,184,0.4)", borderRadius: 8, padding: "16px 20px", marginBottom: 24 }}>
         <div style={{ fontFamily: "Raleway, sans-serif", fontWeight: 700, fontSize: 14, color: "#1F5C58", marginBottom: 4 }}>
           ✓ Claude found {totalFound} skill{totalFound !== 1 ? "s" : ""} on your resume
         </div>
         <div style={{ fontSize: 13, color: "#5EA8A1", lineHeight: 1.5 }}>
-          Review what was found below. Tap any skill to deselect it. Then choose how to apply them to your profile.
+          Tap any skill to deselect it. Then choose how to apply them.
         </div>
       </div>
 
-      {/* Skill sections */}
-      {sections.map(({ key, label, skills }) => (
+      {sections.map(({ key, label }) => (
         <div key={key} className="suggestion-card">
           <div className="suggestion-header">
-            <span className="suggestion-title">{label}</span>
-            <span className="suggestion-count">{skills.length} found</span>
+            <span className="suggestion-label">{label}</span>
+            <span className="suggestion-count">{suggestions[key].length} found</span>
           </div>
-          {skills.length === 0 ? (
+          {suggestions[key].length === 0 ? (
             <span className="empty-state">None found on your resume</span>
           ) : (
             <div className="skill-tags">
-              {skills.map(skill => {
+              {suggestions[key].map(skill => {
                 const isSelected = selected[key].some(s => s.id === skill.id);
                 return (
-                  <button
-                    key={skill.id}
-                    onClick={() => toggle(key, skill)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      padding: "6px 12px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                      cursor: "pointer", border: "none", transition: "all 0.15s",
-                      background: isSelected ? "#7FBFB8" : "#F1F2F2",
-                      color: isSelected ? "#FFFFFF" : "#A0A0A0",
-                      textDecoration: isSelected ? "none" : "line-through",
-                    }}
-                  >
+                  <button key={skill.id} onClick={() => toggle(key, skill)}
+                    className={isSelected ? "skill-suggested" : "skill-suggested deselected"}>
                     {isSelected ? "✓" : "✕"} {skill.name}
                   </button>
                 );
@@ -337,34 +388,26 @@ function SuggestionReview({ suggestions, currentProfile, onAddToExisting, onRepl
         </div>
       ))}
 
-      {/* Action buttons */}
       <div style={{ background: "#FAFAFA", border: "1px solid #E0E1E1", borderRadius: 8, padding: 20, marginBottom: 16 }}>
         <div style={{ fontFamily: "Raleway, sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6B6B6B", marginBottom: 14 }}>
-          How would you like to apply these {totalSelected} skill{totalSelected !== 1 ? "s" : ""}?
+          Apply {totalSelected} selected skill{totalSelected !== 1 ? "s" : ""}:
         </div>
         <div className="action-row">
-          <button className="btn-teal-solid" onClick={() => onAddToExisting(selected)}>
-            ＋ Add to my existing skills
-          </button>
-          <button className="btn-teal-outline" onClick={() => onReplaceAll(selected)}>
-            Replace all my skills
-          </button>
-          <button
-            onClick={onStartManual}
-            style={{ background: "none", border: "none", color: "#A0A0A0", fontSize: 12, cursor: "pointer", textDecoration: "underline", padding: "10px 4px" }}>
-            Skip — edit manually instead
+          <button className="btn-teal-solid" onClick={() => onAddToExisting(selected)}>＋ Add to my existing skills</button>
+          <button className="btn-teal-outline" onClick={() => onReplaceAll(selected)}>Replace all my skills</button>
+          <button onClick={onStartManual} style={{ background: "none", border: "none", color: "#A0A0A0", fontSize: 12, cursor: "pointer", textDecoration: "underline", padding: "10px 4px" }}>
+            Skip — edit manually
           </button>
         </div>
       </div>
-
       <button onClick={onReupload} style={{ background: "none", border: "none", color: "#A0A0A0", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
-        Upload a different resume
+        Upload a different file
       </button>
     </div>
   );
 }
 
-// ── Categorized skill selector ────────────────────────────────────
+// ── Skill selector with clear visual distinction ──────────────────
 function SkillSelector({ label, selected, options, onChange, editing }) {
   const [search, setSearch] = useState("");
   const [expandedCat, setExpandedCat] = useState(null);
@@ -379,20 +422,33 @@ function SkillSelector({ label, selected, options, onChange, editing }) {
   const searchResults = search.length > 1
     ? options.filter(o => !selectedSet.has(o.id) && o.name.toLowerCase().includes(search.toLowerCase()))
     : [];
+
   return (
     <div>
-      <div className="skill-tags" style={{ marginBottom: selected.length ? 16 : 0 }}>
-        {selected.map(s => (
-          <span key={s.id} className="skill-tag">
-            {s.name}
-            {editing && <button className="skill-tag-remove-muted" onClick={() => onChange(selected.filter(x => x.id !== s.id))}>×</button>}
-          </span>
-        ))}
-        {!selected.length && !editing && <span className="empty-state">No {label.toLowerCase()} added yet</span>}
-      </div>
+      {/* Current skills */}
+      {editing && selected.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div className="skill-tags">
+            {selected.map(s => (
+              <span key={s.id} className="skill-tag-edit">
+                {s.name}
+                <button className="skill-tag-delete" onClick={() => onChange(selected.filter(x => x.id !== s.id))} title="Remove">✕</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {!editing && (
+        <div className="skill-tags" style={{ marginBottom: selected.length ? 0 : 0 }}>
+          {selected.map(s => <span key={s.id} className="skill-tag">{s.name}</span>)}
+          {!selected.length && <span className="empty-state">No {label.toLowerCase()} added yet</span>}
+        </div>
+      )}
+
       {editing && (
         <div>
-          <input className="field-input" style={{ marginBottom: 16, marginTop: 8 }} placeholder={`Search ${label.toLowerCase()}...`} value={search} onChange={e => { setSearch(e.target.value); setExpandedCat(null); }} />
+          {selected.length > 0 && <div className="divider-label">Add more</div>}
+          <input className="field-input" style={{ marginBottom: 12 }} placeholder={`Search ${label.toLowerCase()}...`} value={search} onChange={e => { setSearch(e.target.value); setExpandedCat(null); }} />
           {search.length > 1 ? (
             <div className="skill-tags">
               {searchResults.slice(0, 15).map(o => <button key={o.id} className="skill-option" onClick={() => { onChange([...selected, o]); setSearch(""); }}>+ {o.name}</button>)}
@@ -401,13 +457,14 @@ function SkillSelector({ label, selected, options, onChange, editing }) {
           ) : (
             <div>
               {Object.entries(grouped).filter(([, s]) => s.length > 0).map(([cat, skills]) => (
-                <div key={cat} style={{ marginBottom: 12 }}>
-                  <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "8px 0", cursor: "pointer", textAlign: "left" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6B6B6B" }}>{cat} ({skills.length})</span>
+                <div key={cat} style={{ marginBottom: 8 }}>
+                  <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "8px 0", cursor: "pointer", textAlign: "left" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6B6B6B" }}>{cat} ({skills.length})</span>
                     <span style={{ color: "#7FBFB8", fontSize: 18, lineHeight: 1 }}>{expandedCat === cat ? "−" : "+"}</span>
                   </button>
                   {expandedCat === cat && (
-                    <div className="skill-tags" style={{ paddingTop: 8, paddingBottom: 8 }}>
+                    <div className="skill-tags" style={{ paddingTop: 6, paddingBottom: 10 }}>
                       {skills.map(o => <button key={o.id} className="skill-option" onClick={() => onChange([...selected, o])}>+ {o.name}</button>)}
                     </div>
                   )}
@@ -436,20 +493,31 @@ function TechSelector({ selected, options, onChange, editing }) {
   const searchResults = search.length > 1
     ? options.filter(o => !selectedSet.has(o.id) && o.name.toLowerCase().includes(search.toLowerCase()))
     : [];
+
   return (
     <div>
-      <div className="skill-tags" style={{ marginBottom: selected.length ? 16 : 0 }}>
-        {selected.map(s => (
-          <span key={s.id} className="skill-tag">
-            {s.name}
-            {editing && <button className="skill-tag-remove-muted" onClick={() => onChange(selected.filter(x => x.id !== s.id))}>×</button>}
-          </span>
-        ))}
-        {!selected.length && !editing && <span className="empty-state">No tech skills added yet</span>}
-      </div>
+      {editing && selected.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div className="skill-tags">
+            {selected.map(s => (
+              <span key={s.id} className="skill-tag-edit">
+                {s.name}
+                <button className="skill-tag-delete" onClick={() => onChange(selected.filter(x => x.id !== s.id))} title="Remove">✕</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {!editing && (
+        <div className="skill-tags">
+          {selected.map(s => <span key={s.id} className="skill-tag">{s.name}</span>)}
+          {!selected.length && <span className="empty-state">No tech skills added yet</span>}
+        </div>
+      )}
       {editing && (
         <div>
-          <input className="field-input" style={{ marginBottom: 16, marginTop: 8 }} placeholder="Search technology..." value={search} onChange={e => { setSearch(e.target.value); setExpandedCat(null); }} />
+          {selected.length > 0 && <div className="divider-label">Add more</div>}
+          <input className="field-input" style={{ marginBottom: 12 }} placeholder="Search technology..." value={search} onChange={e => { setSearch(e.target.value); setExpandedCat(null); }} />
           {search.length > 1 ? (
             <div className="skill-tags">
               {searchResults.slice(0, 15).map(o => <button key={o.id} className="skill-option" onClick={() => { onChange([...selected, o]); setSearch(""); }}>+ {o.name}</button>)}
@@ -458,13 +526,14 @@ function TechSelector({ selected, options, onChange, editing }) {
           ) : (
             <div>
               {Object.entries(grouped).filter(([, t]) => t.length > 0).map(([cat, tools]) => (
-                <div key={cat} style={{ marginBottom: 12 }}>
-                  <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "8px 0", cursor: "pointer", textAlign: "left" }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6B6B6B" }}>{cat} ({tools.length})</span>
+                <div key={cat} style={{ marginBottom: 8 }}>
+                  <button onClick={() => setExpandedCat(expandedCat === cat ? null : cat)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", padding: "8px 0", cursor: "pointer", textAlign: "left" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6B6B6B" }}>{cat} ({tools.length})</span>
                     <span style={{ color: "#7FBFB8", fontSize: 18, lineHeight: 1 }}>{expandedCat === cat ? "−" : "+"}</span>
                   </button>
                   {expandedCat === cat && (
-                    <div className="skill-tags" style={{ paddingTop: 8, paddingBottom: 8 }}>
+                    <div className="skill-tags" style={{ paddingTop: 6, paddingBottom: 10 }}>
                       {tools.map(o => <button key={o.id} className="skill-option" onClick={() => onChange([...selected, o])}>+ {o.name}</button>)}
                     </div>
                   )}
@@ -488,7 +557,7 @@ export default function OBMPortal() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("profile");
   const [editing, setEditing] = useState(false);
-  const [editMode, setEditMode] = useState(null); // null | "resume" | "resume-review" | "manual"
+  const [editMode, setEditMode] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [primaryOptions, setPrimaryOptions] = useState([]);
@@ -522,10 +591,19 @@ export default function OBMPortal() {
         const primaryIds = new Set(f["Primary-Secondary Skills Algo"] || []);
         const secondaryIds = new Set(f["Secondary Skills Algo"] || []);
         const techIds = new Set(f["Technology skills Algo"] || []);
+        // Load fresh taxonomy on login so deleted options don't show
+        const [pOpts, sOpts, tOpts] = await Promise.all([
+          getSkillTable(TBL_PRIMARY_SKILLS, "Skill Name"),
+          getSkillTable(TBL_SECONDARY_SKILLS, "Label"),
+          getSkillTable(TBL_TECH_SKILLS, "Tech name"),
+        ]);
+        setPrimaryOptions(pOpts);
+        setSecondaryOptions(sOpts);
+        setTechOptions(tOpts);
         setProfile({
-          primarySkills: primaryOptions.filter(o => primaryIds.has(o.id)),
-          secondarySkills: secondaryOptions.filter(o => secondaryIds.has(o.id)),
-          techSkills: techOptions.filter(o => techIds.has(o.id)),
+          primarySkills: pOpts.filter(o => primaryIds.has(o.id)),
+          secondarySkills: sOpts.filter(o => secondaryIds.has(o.id)),
+          techSkills: tOpts.filter(o => techIds.has(o.id)),
           hours: f["Availability Hours"] || [],
           rate: f["Rate"] ?? "",
           notes: f["Notes"] || "",
@@ -544,20 +622,27 @@ export default function OBMPortal() {
   async function handleResumeUpload(file) {
     if (!file) return;
     setParsing(true);
+    setError("");
     try {
-      const text = await file.text();
+      const text = await extractTextFromFile(file);
+      console.log("Extracted text length:", text.length, "First 200 chars:", text.slice(0, 200));
+      if (text.length < 50) {
+        setError("Couldn't read this file. Please try a .txt or .docx version of your resume.");
+        setParsing(false);
+        return;
+      }
       const suggestions = await claudeParseResume(text, primaryOptions, secondaryOptions, techOptions);
       setParsedSuggestions(suggestions);
       setEditMode("resume-review");
     } catch (e) {
-      setError("Could not parse resume. Please select your skills manually below.");
+      console.error("Resume upload error:", e);
+      setError("Could not parse resume: " + e.message);
     } finally {
       setParsing(false);
     }
   }
 
   function handleAddToExisting(selected) {
-    // Merge suggestions with existing — no duplicates
     const mergeUnique = (existing, additions) => {
       const ids = new Set(existing.map(s => s.id));
       return [...existing, ...additions.filter(s => !ids.has(s.id))];
@@ -608,12 +693,9 @@ export default function OBMPortal() {
     }
   }
 
-  function resetEdit() {
-    setEditing(false);
-    setEditMode(null);
-    setParsedSuggestions(null);
-    setError("");
-  }
+  function resetEdit() { setEditing(false); setEditMode(null); setParsedSuggestions(null); setError(""); }
+
+  const isEditing = editing && editMode === "manual";
 
   return (
     <>
@@ -629,8 +711,6 @@ export default function OBMPortal() {
         <div className="teal-bar"></div>
 
         <main className="portal-main">
-
-          {/* EMAIL */}
           {stage === "email" && (
             <>
               <div className="portal-hero">
@@ -654,7 +734,6 @@ export default function OBMPortal() {
             </>
           )}
 
-          {/* LOADING */}
           {stage === "loading" && (
             <div style={{ textAlign: "center", paddingTop: 80 }}>
               <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3, margin: "0 auto 20px" }}></div>
@@ -662,9 +741,8 @@ export default function OBMPortal() {
             </div>
           )}
 
-          {/* PROFILE */}
           {stage === "profile" && obm && (
-            <div style={{ paddingBottom: editing && editMode !== null ? 80 : 0 }}>
+            <div style={{ paddingBottom: isEditing ? 80 : 0 }}>
               <div className="profile-header">
                 <h1 className="profile-greeting">{obm.fields["Full Name"] || obm.fields["Name"] || email.split("@")[0]}</h1>
                 <p className="profile-email">{email}</p>
@@ -678,7 +756,6 @@ export default function OBMPortal() {
 
               {activeTab === "profile" && (
                 <>
-                  {/* Top nav buttons */}
                   <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
                     {!editing ? (
                       <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(true); setEditMode(null); }}>Edit Profile</button>
@@ -698,7 +775,7 @@ export default function OBMPortal() {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                         {[
                           { mode: "resume", icon: "📄", title: "Upload Resume", desc: "Claude reads your resume and suggests skills to add" },
-                          { mode: "manual", icon: "✏️", title: "Edit Manually", desc: "Browse skills by category and add or remove individually" },
+                          { mode: "manual", icon: "✏️", title: "Edit Manually", desc: "Browse by category, add or remove skills individually" },
                         ].map(({ mode, icon, title, desc }) => (
                           <button key={mode} onClick={() => setEditMode(mode)}
                             style={{ padding: "20px 16px", border: "1.5px solid #E0E1E1", borderRadius: 8, background: "#F1F2F2", cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}
@@ -729,7 +806,7 @@ export default function OBMPortal() {
                             onDragLeave={e => e.currentTarget.classList.remove("drag-over")}
                             onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove("drag-over"); handleResumeUpload(e.dataTransfer.files[0]); }}>
                             <div className="upload-icon">📄</div>
-                            <div className="upload-text"><strong>Drop your resume here</strong><br />or click to browse — PDF or text file</div>
+                            <div className="upload-text"><strong>Drop your resume here</strong><br />or click to browse — PDF, Word, or text file</div>
                           </div>
                           <input type="file" accept=".pdf,.txt,.doc,.docx" style={{ display: "none" }} onChange={e => handleResumeUpload(e.target.files[0])} />
                         </label>
@@ -749,30 +826,48 @@ export default function OBMPortal() {
                     />
                   )}
 
-                  {/* Skills view — always visible, editable in manual mode */}
-                  {(editMode !== "resume-review") && (
+                  {/* Edit legend */}
+                  {isEditing && (
+                    <div className="edit-legend">
+                      <div className="legend-item"><div className="legend-dot-teal"></div> Your current skills (tap ✕ to remove)</div>
+                      <div className="legend-item"><div className="legend-dot-gray"></div> Available to add</div>
+                    </div>
+                  )}
+
+                  {/* Skills — only show when not in resume review */}
+                  {editMode !== "resume-review" && (
                     <>
-                      <div className="section-card">
-                        <div className="section-header"><span className="section-title">Primary Skills</span></div>
-                        <SkillSelector label="Primary Skills" selected={profile.primarySkills} options={primaryOptions} onChange={v => setProfile(p => ({ ...p, primarySkills: v }))} editing={editing && editMode === "manual"} />
+                      <div className={`section-card ${isEditing ? "editing-active" : ""}`}>
+                        <div className="section-header">
+                          <span className={`section-title ${isEditing ? "active" : ""}`}>Primary Skills</span>
+                        </div>
+                        <SkillSelector label="Primary Skills" selected={profile.primarySkills} options={primaryOptions} onChange={v => setProfile(p => ({ ...p, primarySkills: v }))} editing={isEditing} />
                       </div>
-                      <div className="section-card">
-                        <div className="section-header"><span className="section-title">Secondary Skills</span></div>
-                        <SkillSelector label="Secondary Skills" selected={profile.secondarySkills} options={secondaryOptions} onChange={v => setProfile(p => ({ ...p, secondarySkills: v }))} editing={editing && editMode === "manual"} />
+
+                      <div className={`section-card ${isEditing ? "editing-active" : ""}`}>
+                        <div className="section-header">
+                          <span className={`section-title ${isEditing ? "active" : ""}`}>Secondary Skills</span>
+                        </div>
+                        <SkillSelector label="Secondary Skills" selected={profile.secondarySkills} options={secondaryOptions} onChange={v => setProfile(p => ({ ...p, secondarySkills: v }))} editing={isEditing} />
                       </div>
-                      <div className="section-card">
-                        <div className="section-header"><span className="section-title">Technology Skills</span></div>
-                        <TechSelector selected={profile.techSkills} options={techOptions} onChange={v => setProfile(p => ({ ...p, techSkills: v }))} editing={editing && editMode === "manual"} />
+
+                      <div className={`section-card ${isEditing ? "editing-active" : ""}`}>
+                        <div className="section-header">
+                          <span className={`section-title ${isEditing ? "active" : ""}`}>Technology Skills</span>
+                        </div>
+                        <TechSelector selected={profile.techSkills} options={techOptions} onChange={v => setProfile(p => ({ ...p, techSkills: v }))} editing={isEditing} />
                       </div>
-                      <div className="section-card">
-                        <div className="section-header"><span className="section-title">Availability</span></div>
-                        {editing && editMode === "manual" ? (
+
+                      <div className={`section-card ${isEditing ? "editing-active" : ""}`}>
+                        <div className="section-header"><span className={`section-title ${isEditing ? "active" : ""}`}>Availability</span></div>
+                        {isEditing ? (
                           <div className="skill-tags">
                             {hoursOptions.map(h => (
-                              <button key={h} className={profile.hours.includes(h) ? "skill-tag" : "skill-option"}
+                              <button key={h}
+                                className={profile.hours.includes(h) ? "skill-tag-edit" : "skill-option"}
                                 onClick={() => setProfile(p => ({ ...p, hours: p.hours.includes(h) ? p.hours.filter(x => x !== h) : [...p.hours, h] }))}
-                                style={{ cursor: "pointer", border: "none" }}>
-                                {profile.hours.includes(h) ? "✓ " : "+ "}{h}
+                                style={{ cursor: "pointer", border: profile.hours.includes(h) ? "none" : undefined }}>
+                                {profile.hours.includes(h) ? <><span>✓</span>{h}<button className="skill-tag-delete" onClick={e => { e.stopPropagation(); setProfile(p => ({ ...p, hours: p.hours.filter(x => x !== h) })); }}>✕</button></> : `+ ${h}`}
                               </button>
                             ))}
                           </div>
@@ -782,9 +877,10 @@ export default function OBMPortal() {
                           </div>
                         )}
                       </div>
-                      <div className="section-card">
-                        <div className="section-header"><span className="section-title">Details</span></div>
-                        {editing && editMode === "manual" ? (
+
+                      <div className={`section-card ${isEditing ? "editing-active" : ""}`}>
+                        <div className="section-header"><span className={`section-title ${isEditing ? "active" : ""}`}>Details</span></div>
+                        {isEditing ? (
                           <div className="field-group" style={{ marginBottom: 0 }}>
                             <label className="field-label">Preferred Hourly Rate</label>
                             <div className="rate-input-wrap">
@@ -833,7 +929,7 @@ export default function OBMPortal() {
           )}
         </main>
 
-        {editing && editMode === "manual" && stage === "profile" && (
+        {isEditing && (
           <div className="save-bar">
             {saveSuccess && <span className="text-success">✓ Profile saved</span>}
             <button className="btn btn-ghost" onClick={resetEdit}>Cancel</button>
