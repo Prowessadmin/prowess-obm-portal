@@ -21,6 +21,12 @@ const F_RATE       = "Rate";
 const F_RATE_TEXT  = "What is your preferred hourly rate?";
 const F_NOTES      = "Notes";
 
+// PM Profile extra fields
+const F_DISC_PRIMARY   = "fld7ONyQ5vTA5pyI0";
+const F_DISC_SECONDARY = "fld8CjQJ8XpY0NmbH";
+const F_VARK           = "fldV3Z9O2N8pXRUVe";
+const F_PHOTO          = "fldkKq2zu0YUP2Tte";
+
 // Matching field IDs
 const F_MATCH_STATUS = "fldmcFMJQ5uPCCrsE";
 const F_MATCH_SCORE  = "fldxXrk9SIv1O8I44";
@@ -583,7 +589,7 @@ export default function App() {
   const [pOpts, setPOpts]   = useState([]);
   const [sOpts, setSOpts]   = useState([]);
   const [tOpts, setTOpts]   = useState([]);
-  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"" });
+  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null });
   const [sug, setSug]       = useState(null);
   const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
@@ -711,6 +717,41 @@ export default function App() {
             </div>
 
             {tab === "profile" && <>
+
+              {/* Profile summary bar — avatar + DISC + VARK */}
+              <div style={{display:"flex",alignItems:"center",gap:20,padding:"20px 24px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,marginBottom:24}}>
+                {/* Avatar */}
+                <div style={{flexShrink:0}}>
+                  {profile.photoUrl
+                    ? <img src={profile.photoUrl} alt="" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8"}} />
+                    : <div style={{width:64,height:64,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
+                        {(obm.fields["Full Name"]||obm.fields["Name"]||email).charAt(0).toUpperCase()}
+                      </div>
+                  }
+                </div>
+                {/* Info */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A",marginBottom:6}}>
+                    {obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {profile.discPrimary && (
+                      <span style={{background:"#E8F4F3",border:"1px solid rgba(127,191,184,.4)",color:"#1F5C58",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>
+                        DISC: {profile.discPrimary}{profile.discSecondary ? ` / ${profile.discSecondary}` : ""}
+                      </span>
+                    )}
+                    {profile.vark && (
+                      <span style={{background:"#F1F2F2",border:"1px solid #C8C9CA",color:"#4A4A4A",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>
+                        VARK: {profile.vark}
+                      </span>
+                    )}
+                    {!profile.discPrimary && !profile.vark && (
+                      <span style={{fontSize:12,color:"#A0A0A0",fontStyle:"italic"}}>Assessment data not yet available</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Top button */}
               <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
                 {!editing
