@@ -10,6 +10,7 @@ const TBL_MATCHING = "tblIoFOOL5BShC3bg";
 const TBL_PRIMARY  = "tbll8MKHuKiM7YciK";
 const TBL_SECONDARY= "tbljqaeAndASfnyc0";
 const TBL_TECH     = "tbliJ5Q4yU0m8EnsG";
+const TBL_INDUSTRY = "tbl2qU124blP8q1nv"; // Industry knowledge — linked from "Industry knowledge 2" on PM Profile
 
 // PM Profile field names (as they appear in Airtable)
 const F_EMAIL      = "emai2";
@@ -29,7 +30,7 @@ const F_PHOTO          = "fldc5TYw5ZfYlsvjy"; // Profile pic
 const F_CITY           = "fldNUlNQFKbH3AkUE"; // City2
 const F_STATE          = "fldzqRGsZwi2ghuAK"; // State2
 const F_FACTS          = "fldvAcP6bqXnFwcQJ"; // Facts & Hobbies
-const F_INDUSTRY       = "fldSp39omu7EaB0c4"; // Industry List (multipleSelects)
+const F_INDUSTRY       = "fldhg7qjs9AVwp4wu"; // Industry knowledge 2 (multipleRecordLinks → Industry knowledge)
 
 // Matching field IDs
 const F_MATCH_STATUS = "fldmcFMJQ5uPCCrsE";
@@ -98,7 +99,7 @@ async function saveProfile(recordId, profile) {
     ...(profile.city  !== undefined && { [F_CITY]:  profile.city }),
     ...(profile.state !== undefined && { [F_STATE]: profile.state }),
     ...(profile.facts !== undefined && { [F_FACTS]: profile.facts }),
-    ...(profile.industries !== undefined && { "Industry List": profile.industries }),
+    ...(profile.industries !== undefined && { "Industry knowledge 2": profile.industries.map(i => i.id) }),
   };
   // Remove empty arrays
   Object.keys(fields).forEach(k => {
@@ -183,9 +184,9 @@ ${text.slice(0, 8000)}`
     });
     const found = parsed.foundSkills || parsed;
     const maybe = parsed.maybeSkills || {};
-    // Map industry names against known options
+    // Map industry names against known options → full {id, name} objects
     const foundIndustries = (parsed.industries || [])
-      .map(n => indOpts.find(o => o.name.toLowerCase() === n.trim().toLowerCase())?.name)
+      .map(n => indOpts.find(o => o.name.toLowerCase() === n.trim().toLowerCase()))
       .filter(Boolean);
     return {
       found: mapSkills(found, pOpts, sOpts, tOpts),
@@ -483,7 +484,7 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
           {industries.length === 0
             ? <span className="empty">None clearly identified from your resume</span>
             : <div className="tags">
-                {industries.map(ind => <span key={ind} className="tag">{ind}</span>)}
+                {industries.map(ind => <span key={ind.id} className="tag">{ind.name}</span>)}
               </div>
           }
         </div>
@@ -649,24 +650,13 @@ export default function App() {
         getSkills(TBL_PRIMARY, "Skill Name"),
         getSkills(TBL_SECONDARY, "Label"),
         getSkills(TBL_TECH, "Tech name"),
-        // Load industry options — scan records to get all values used
-        atFetch(`/${TBL_PM}?fields%5B%5D=${F_INDUSTRY}&maxRecords=2000`).then(d => {
-          // Start with known base options
-          const KNOWN = [
-            "Accounting/CAS/Tax/CFO","Agriculture","Construction","E-commerce",
-            "Education","Finance/Banking","Government/Public Sector","Healthcare",
-            "Hospitality/Food & Beverage","Insurance","Legal","Manufacturing",
-            "Marketing","Media/Entertainment","Non-Profit","Real Estate",
-            "Retail","Services/Consulting","Technology Hardware",
-            "Technology Software","Transportation/Logistics"
-          ];
-          const seen = new Map(KNOWN.map(n => [n, n]));
-          (d.records || []).forEach(r => {
-            const vals = r.fields["Industry List"] || [];
-            vals.forEach(v => { const name = v?.name || v; if (name) seen.set(name, name); });
-          });
-          return [...seen.keys()].sort().map(name => ({ id: name, name }));
-        }),
+        // Load industry options from Industry knowledge table
+        atFetch(`/${TBL_INDUSTRY}?fields%5B%5D=Industry%20name&maxRecords=200`).then(d =>
+          (d.records || [])
+            .map(r => ({ id: r.id, name: (r.fields["Industry name"] || "").trim() }))
+            .filter(o => o.name)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        ),
         findByEmail(email.toLowerCase().trim()),
       ]);
       setPOpts(p); setSOpts(s); setTOpts(t); setIndOpts(indRec);
@@ -678,6 +668,7 @@ export default function App() {
       const pIds = new Set(f[F_PRIMARY]   || []);
       const sIds = new Set(f[F_SECONDARY] || []);
       const tIds = new Set(f[F_TECH]      || []);
+      const iIds = new Set(f["Industry knowledge 2"] || f[F_INDUSTRY] || []);
       console.log("Primary IDs:", [...pIds], "| Options:", p.length);
       console.log("Secondary IDs:", [...sIds], "| Options:", s.length);
       console.log("Tech IDs:", [...tIds], "| Options:", t.length);
@@ -698,7 +689,7 @@ export default function App() {
         city:          f["City2"]          || f[F_CITY]  || "",
         state:         f["State2"]         || f[F_STATE] || "",
         facts:         f["Facts & Hobbies"]|| f[F_FACTS] || "",
-        industries:    (f["Industry List"] || f[F_INDUSTRY] || []).map(v => v?.name || v).filter(Boolean),
+        industries:    indRec.filter(o => iIds.has(o.id)),
       });
       // First-time user if no skills at all
       const hasSkills = 
@@ -732,13 +723,12 @@ export default function App() {
 
   function addToExisting(sel) {
     const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...b.filter(x => !ids.has(x.id))]; };
-    const mergeIndustries = (a, b) => { const s = new Set(a); return [...a, ...b.filter(x => !s.has(x))]; };
     setProfile(p => ({
       ...p,
       primarySkills:   merge(p.primarySkills, sel.primarySkills),
       secondarySkills: merge(p.secondarySkills, sel.secondarySkills),
       techSkills:      merge(p.techSkills, sel.techSkills),
-      industries:      mergeIndustries(p.industries, sug.industries || []),
+      industries:      merge(p.industries, sug.industries || []),
     }));
     setSug(null); setSugStep("found"); setEMode("manual");
   }
@@ -1011,19 +1001,19 @@ export default function App() {
                     <div>
                       <div className="tags" style={{marginBottom: profile.industries.length ? 12 : 0}}>
                         {profile.industries.map(ind => (
-                          <span key={ind} className="tag-e">
-                            {ind}
-                            <button className="del" onClick={() => setProfile(p => ({...p, industries: p.industries.filter(x => x !== ind)}))}>✕</button>
+                          <span key={ind.id} className="tag-e">
+                            {ind.name}
+                            <button className="del" onClick={() => setProfile(p => ({...p, industries: p.industries.filter(x => x.id !== ind.id)}))}>✕</button>
                           </span>
                         ))}
                       </div>
                       {profile.industries.length > 0 && <div className="div-lbl">Add more</div>}
                       <div className="tags">
                         {indOpts
-                          .filter(o => !profile.industries.includes(o.name))
+                          .filter(o => !profile.industries.some(i => i.id === o.id))
                           .map(o => (
                             <button key={o.id} className="opt"
-                              onClick={() => setProfile(p => ({...p, industries: [...p.industries, o.name]}))}>
+                              onClick={() => setProfile(p => ({...p, industries: [...p.industries, o]}))}>
                               + {o.name}
                             </button>
                           ))
@@ -1033,7 +1023,7 @@ export default function App() {
                   ) : (
                     <div className="tags">
                       {profile.industries.length
-                        ? profile.industries.map(ind => <span key={ind} className="tag">{ind}</span>)
+                        ? profile.industries.map(ind => <span key={ind.id} className="tag">{ind.name}</span>)
                         : <span className="empty">No industry experience added yet</span>
                       }
                     </div>
