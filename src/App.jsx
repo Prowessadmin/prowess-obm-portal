@@ -11,6 +11,18 @@ const TBL_PRIMARY  = "tbll8MKHuKiM7YciK";
 const TBL_SECONDARY= "tbljqaeAndASfnyc0";
 const TBL_TECH     = "tbliJ5Q4yU0m8EnsG";
 const TBL_INDUSTRY = "tbl2qU124blP8q1nv"; // Industry knowledge — linked from "Industry knowledge 2" on PM Profile
+const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
+
+// Spotlight field names
+const SPOT_FIELDS = [
+  { key: "Branding nickname",            label: "Branding Nickname",   multiline: false },
+  { key: "Skill 1",                      label: "Top Skill 1",         multiline: false },
+  { key: "Skill 2",                      label: "Top Skill 2",         multiline: false },
+  { key: "skill 3",                      label: "Top Skill 3",         multiline: false },
+  { key: "Industries or Niche",          label: "Industries / Niche",  multiline: false },
+  { key: "Greatest personal achievement",label: "Greatest Achievement",multiline: true  },
+  { key: "Who you are",                  label: "Who You Are",         multiline: true  },
+];
 
 // PM Profile field names (as they appear in Airtable)
 const F_EMAIL      = "emai2";
@@ -87,6 +99,25 @@ async function getMatches(pmId) {
   return d.records || [];
 }
 
+async function getSpotlight(email) {
+  const enc = encodeURIComponent(`LOWER({email})="${email.toLowerCase()}"`);
+  const d = await atFetch(`/${TBL_SPOTLIGHT}?filterByFormula=${enc}&maxRecords=1`);
+  return d.records?.[0] || null;
+}
+
+async function saveSpotlight(recordId, fields, email) {
+  if (recordId) {
+    return atFetch(`/${TBL_SPOTLIGHT}/${recordId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ fields }),
+    });
+  }
+  return atFetch(`/${TBL_SPOTLIGHT}`, {
+    method: "POST",
+    body: JSON.stringify({ fields: { email, ...fields } }),
+  });
+}
+
 async function getSkills(tableId, nameField) {
   const d = await atFetch(`/${tableId}?maxRecords=200`);
   return (d.records || [])
@@ -103,6 +134,8 @@ async function saveProfile(recordId, profile) {
     [F_HOURS]:     profile.hours,
     ...(rate !== null && !isNaN(rate) && { [F_RATE]: rate }),
     ...(profile.rate && { [F_RATE_TEXT]: String(profile.rate) }),
+    ...(profile.firstName !== undefined && { "First Name": profile.firstName }),
+    ...(profile.lastName  !== undefined && { "Last Name":  profile.lastName }),
     ...(profile.city  !== undefined && { [F_CITY]:  profile.city }),
     ...(profile.state !== undefined && { [F_STATE]: profile.state }),
     ...(profile.facts !== undefined && { [F_FACTS]: profile.facts }),
@@ -717,7 +750,7 @@ export default function App() {
   const [sOpts, setSOpts]   = useState([]);
   const [tOpts, setTOpts]   = useState([]);
   const [indOpts, setIndOpts] = useState([]); // industry options
-  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null, city:"", state:"", facts:"", industries:[] });
+  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null, firstName:"", lastName:"", city:"", state:"", facts:"", industries:[] });
   const [sug, setSug]       = useState(null);
   const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
@@ -727,6 +760,31 @@ export default function App() {
   const [infoEditing, setInfoEditing] = useState(false);
   const [infoSaving, setInfoSaving] = useState(false);
   const [infoDraft, setInfoDraft] = useState({ city:"", state:"", rate:"", facts:"" });
+  const [spotlight, setSpotlight] = useState(null); // { id, fields } | null
+  const [spotlightLoaded, setSpotlightLoaded] = useState(false);
+  const [spotlightLoading, setSpotlightLoading] = useState(false);
+  const [spotlightEditing, setSpotlightEditing] = useState(false);
+  const [spotlightSaving, setSpotlightSaving] = useState(false);
+  const [spotlightSaved, setSpotlightSaved] = useState(false);
+  const [spotlightDraft, setSpotlightDraft] = useState({});
+
+  // Lazy-load spotlight when user clicks the tab
+  useEffect(() => {
+    if (tab !== "spotlight" || spotlightLoaded || !obm) return;
+    (async () => {
+      setSpotlightLoading(true);
+      try {
+        const rec = await getSpotlight(email);
+        setSpotlight(rec);
+      } catch (e) {
+        console.error("Spotlight load failed:", e);
+        setErr("Couldn't load your Spotlight: " + e.message);
+      } finally {
+        setSpotlightLoading(false);
+        setSpotlightLoaded(true);
+      }
+    })();
+  }, [tab, spotlightLoaded, obm, email]);
   const hours = ["5 hours per week","10 hours per week","20 hours per week","30 hours per week"];
 
   async function saveOnboardStep() {
@@ -786,6 +844,8 @@ export default function App() {
         discSecondary: selName(f["Secondary Disc Trait"] || f[F_DISC_SECONDARY]),
         vark:          selName(f["Vark Style"]           || f[F_VARK]),
         photoUrl:      (f["Profile pic"] || f[F_PHOTO])?.[0]?.url || null,
+        firstName:     f["First Name"]    || "",
+        lastName:      f["Last Name"]     || "",
         city:          f["City2"]          || f[F_CITY]  || "",
         state:         f["State2"]         || f[F_STATE] || "",
         facts:         f["Facts & Hobbies"]|| f[F_FACTS] || "",
@@ -864,6 +924,12 @@ export default function App() {
 
   const ed = editing && eMode === "manual";
 
+  // Display name helpers — prefer First + Last, then formula Name, then email
+  const f = obm?.fields || {};
+  const fullName = [profile.firstName || f["First Name"], profile.lastName || f["Last Name"]].filter(Boolean).join(" ");
+  const displayName = fullName || f["Name"] || (email ? email.split("@")[0] : "");
+  const avatarInitial = ((profile.firstName || f["First Name"] || f["Name"] || email || "?").trim().charAt(0) || "?").toUpperCase();
+
   return (
     <>
       <style>{css}</style>
@@ -899,13 +965,13 @@ export default function App() {
                   {profile.photoUrl
                     ? <img src={profile.photoUrl} alt="" style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(255,255,255,.6)"}} />
                     : <div style={{width:56,height:56,borderRadius:"50%",background:"rgba(255,255,255,.25)",border:"2px solid rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
-                        {(obm.fields["Full Name"]||obm.fields["Name"]||email).charAt(0).toUpperCase()}
+                        {avatarInitial}
                       </div>
                   }
                   <div>
                     <div style={{fontSize:13,color:"rgba(255,255,255,.75)",marginBottom:2}}>Welcome to Prowess</div>
                     <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,color:"#fff"}}>
-                      {obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}
+                      {displayName}
                     </div>
                   </div>
                 </div>
@@ -1065,7 +1131,7 @@ export default function App() {
 
           {/* PROFILE */}
           {stage === "profile" && obm && <div style={{paddingBottom: ed ? 80 : 0}}>
-            <div className="ph"><h1 className="pg">{obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}</h1><p className="pe">{email}</p></div>
+            <div className="ph"><h1 className="pg">{displayName}</h1><p className="pe">{email}</p></div>
             {err && <div className="err">{err}</div>}
 
             {/* Compact info card — basic info quick-edit */}
@@ -1145,6 +1211,7 @@ export default function App() {
             <div className="tabs">
               <button className={`tab ${tab==="profile"?"on":""}`} onClick={() => setTab("profile")}>My Profile</button>
               <button className={`tab ${tab==="roles"?"on":""}`} onClick={() => setTab("roles")}>My Roles {roles.length>0&&`(${roles.length})`}</button>
+              <button className={`tab ${tab==="spotlight"?"on":""}`} onClick={() => setTab("spotlight")}>My Spotlight ✨</button>
             </div>
 
             {tab === "profile" && <>
@@ -1156,14 +1223,14 @@ export default function App() {
                   {profile.photoUrl
                     ? <img src={profile.photoUrl} alt="" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8"}} />
                     : <div style={{width:64,height:64,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
-                        {(obm.fields["Full Name"]||obm.fields["Name"]||email).charAt(0).toUpperCase()}
+                        {avatarInitial}
                       </div>
                   }
                 </div>
                 {/* Info */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A",marginBottom:4}}>
-                    {obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}
+                    {displayName}
                   </div>
                   {(profile.city || profile.state) && (
                     <div style={{fontSize:13,color:"#6B6B6B",marginBottom:6}}>
@@ -1301,6 +1368,16 @@ export default function App() {
                     <div style={{display:"grid",gap:16}}>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                         <div>
+                          <label className="fl">First Name</label>
+                          <input className="fi" placeholder="Leah" value={profile.firstName} onChange={e => setProfile(p => ({...p,firstName:e.target.value}))} />
+                        </div>
+                        <div>
+                          <label className="fl">Last Name</label>
+                          <input className="fi" placeholder="Herde" value={profile.lastName} onChange={e => setProfile(p => ({...p,lastName:e.target.value}))} />
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <div>
                           <label className="fl">City</label>
                           <input className="fi" placeholder="Austin" value={profile.city} onChange={e => setProfile(p => ({...p,city:e.target.value}))} />
                         </div>
@@ -1321,6 +1398,7 @@ export default function App() {
                   ) : (
                     <div style={{display:"grid",gap:14}}>
                       {[
+                        ["Name", [profile.firstName, profile.lastName].filter(Boolean).join(" ")],
                         ["Location", [profile.city, profile.state].filter(Boolean).join(", ")],
                         ["Rate",     profile.rate ? `$${profile.rate}/hr` : ""],
                         ["Facts & Hobbies", profile.facts],
@@ -1330,7 +1408,7 @@ export default function App() {
                           <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
                         </div>
                       ) : null)}
-                      {!profile.city && !profile.rate && !profile.facts && <span className="empty">No details added yet</span>}
+                      {!profile.firstName && !profile.lastName && !profile.city && !profile.rate && !profile.facts && <span className="empty">No details added yet</span>}
                     </div>
                   )}
                 </div>
@@ -1351,6 +1429,79 @@ export default function App() {
                   ))
               }
             </div>}
+
+            {tab === "spotlight" && <div style={{paddingBottom: spotlightEditing ? 80 : 0}}>
+              <div className="info" style={{marginBottom:20}}>
+                Your Spotlight profile is how Prowess introduces you to clients. Make it personal — clients choose OBMs they connect with, not just ones with the right skills.
+              </div>
+
+              {spotlightLoading && !spotlightLoaded && (
+                <div style={{textAlign:"center",padding:"40px 0"}}>
+                  <div className="spin" style={{width:32,height:32,borderWidth:3,margin:"0 auto 14px"}}></div>
+                  <p style={{color:"#6B6B6B",fontSize:14}}>Loading your Spotlight...</p>
+                </div>
+              )}
+
+              {spotlightLoaded && !spotlightEditing && !spotlight && (
+                <div className="card" style={{textAlign:"center",padding:"40px 24px"}}>
+                  <div style={{fontSize:32,marginBottom:12}}>✨</div>
+                  <p style={{color:"#1A1A1A",fontSize:15,fontWeight:600,fontFamily:"Raleway,sans-serif",marginBottom:8}}>
+                    Your Spotlight isn't set up yet
+                  </p>
+                  <p style={{color:"#6B6B6B",fontSize:14,lineHeight:1.6,marginBottom:20,maxWidth:440,margin:"0 auto 20px"}}>
+                    Your spotlight profile hasn't been set up yet. Fill this in to help Prowess tell your story to clients.
+                  </p>
+                  <button className="btn btn-p" style={{width:"auto"}} onClick={() => {
+                    const blank = {};
+                    SPOT_FIELDS.forEach(s => { blank[s.key] = ""; });
+                    setSpotlightDraft(blank);
+                    setSpotlightEditing(true);
+                  }}>
+                    Set Up My Spotlight
+                  </button>
+                </div>
+              )}
+
+              {spotlightLoaded && !spotlightEditing && spotlight && (
+                <div>
+                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+                    {spotlightSaved && <span className="ok" style={{marginRight:12,alignSelf:"center"}}>✓ Spotlight saved</span>}
+                    <button className="btn btn-g btn-sm" onClick={() => {
+                      const draft = {};
+                      SPOT_FIELDS.forEach(s => { draft[s.key] = spotlight.fields[s.key] || ""; });
+                      setSpotlightDraft(draft);
+                      setSpotlightEditing(true);
+                    }}>Edit Spotlight</button>
+                  </div>
+                  {SPOT_FIELDS.map(s => {
+                    const val = spotlight.fields[s.key];
+                    return (
+                      <div key={s.key} className="card">
+                        <div className="ch"><span className="ct">{s.label}</span></div>
+                        {val
+                          ? <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
+                          : <span className="empty">Not set</span>
+                        }
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {spotlightEditing && (
+                <div>
+                  {SPOT_FIELDS.map(s => (
+                    <div key={s.key} className="card ed">
+                      <div className="ch"><span className="ct on">{s.label}</span></div>
+                      {s.multiline
+                        ? <textarea className="fi" value={spotlightDraft[s.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [s.key]: e.target.value}))} style={{minHeight:120,resize:"vertical",lineHeight:1.6}} />
+                        : <input className="fi" value={spotlightDraft[s.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [s.key]: e.target.value}))} />
+                      }
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>}
           </div>}
         </main>
 
@@ -1359,6 +1510,28 @@ export default function App() {
           <button className="btn btn-g" onClick={reset}>Cancel</button>
           <button className="btn btn-p" style={{width:"auto"}} onClick={save} disabled={saving}>
             {saving ? <><span className="spin"></span> Saving...</> : "Save Changes"}
+          </button>
+        </div>}
+
+        {spotlightEditing && <div className="save-bar">
+          <button className="btn btn-g" onClick={() => setSpotlightEditing(false)}>Cancel</button>
+          <button className="btn btn-p" style={{width:"auto"}} disabled={spotlightSaving} onClick={async () => {
+            setSpotlightSaving(true); setErr("");
+            try {
+              const fields = {};
+              SPOT_FIELDS.forEach(s => { fields[s.key] = spotlightDraft[s.key] || ""; });
+              const saved = await saveSpotlight(spotlight?.id, fields, email);
+              setSpotlight(saved);
+              setSpotlightEditing(false);
+              setSpotlightSaved(true);
+              setTimeout(() => setSpotlightSaved(false), 4000);
+            } catch (e) {
+              setErr("Spotlight save failed: " + e.message);
+            } finally {
+              setSpotlightSaving(false);
+            }
+          }}>
+            {spotlightSaving ? <><span className="spin"></span> Saving...</> : "Save Spotlight"}
           </button>
         </div>}
       </div>
