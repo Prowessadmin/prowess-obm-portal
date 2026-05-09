@@ -104,36 +104,45 @@ async function parseResume(text, pOpts, sOpts, tOpts) {
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1500,
-      system: `You are a resume skills extractor for Prowess Project OBM matching.
-Read the resume carefully and return two things:
-1. The TOP 5 most clearly demonstrated skills from the resume (high confidence matches only)
-2. Up to 5 skills that are common for OBMs but NOT clearly shown on this resume — skills worth asking about
+      system: `You are a resume skills extractor for Prowess Project OBM matching system.
+Read the resume and return two things:
+1. The most clearly demonstrated skills — max 5 per category (primary, secondary, tech)
+2. In-demand OBM skills NOT clearly shown — worth asking about — max 3 per category
 
 Return ONLY valid JSON — no markdown, no preamble.
 Format: {
-  "foundSkills": {"primarySkills":["exact name"],"secondarySkills":["exact name"],"techSkills":["exact name"]},
-  "maybeSkills": {"primarySkills":["exact name"],"secondarySkills":["exact name"],"techSkills":["exact name"]},
+  "foundSkills": {
+    "primarySkills": ["exact name from taxonomy"],
+    "secondarySkills": ["exact name from taxonomy"],
+    "techSkills": ["exact name from taxonomy"]
+  },
+  "maybeSkills": {
+    "primarySkills": ["exact name from taxonomy"],
+    "secondarySkills": ["exact name from taxonomy"],
+    "techSkills": ["exact name from taxonomy"]
+  },
   "rate": ""
-}
-foundSkills = clearly demonstrated, max 5 total across all categories
-maybeSkills = common OBM skills not shown on resume, max 5 total, worth asking about`,
+}`,
       messages: [{
         role: "user",
-        content: `Read this resume. Return two skill sets:
+        content: `Read this resume. Return found skills (clearly demonstrated) and maybe skills (common OBM skills not shown).
 
-FOUND SKILLS (max 5 total — only high-confidence matches clearly shown on resume):
-- Infer from responsibilities: "managed projects" → Project Management
-- "oversaw budgets" → Budgeting
-- "led a team" → Resource Management, Team communications
-- "ran social media campaigns" → Social media, Digital marketing
-- Only include skills you are CONFIDENT about
+FOUND SKILLS — infer from job descriptions and responsibilities, not just explicit skill lists:
+- "managed projects" → Project Management (primary)
+- "oversaw budgets" → Budgeting (primary)
+- "led a team" → Resource Management, Team communications (primary)
+- "ran social media campaigns" → Social media, Content creation, Digital marketing (primary)
+- "used QuickBooks/Xero" → that tool (tech)
+- "used Slack/Zoom/Google Workspace" → those tools (tech)
+- Max 5 per category. Only include if CONFIDENT.
+- Skills can appear in BOTH primary and secondary if appropriate.
 
-MAYBE SKILLS (max 5 total — common OBM skills NOT shown on resume, worth asking about):
-- Pick from high-demand OBM skills: Project Management, Process Improvement, Strategic planning, CRM management, Reporting, Team communications, Scheduling, Onboarding, Customer Success
-- Only suggest skills NOT already in foundSkills
-- These will be shown as yes/no questions to the OBM
+MAYBE SKILLS — in-demand OBM skills NOT already in foundSkills, worth asking about:
+- Primary/Secondary examples: Project Management, Process Improvement, Strategic planning, CRM management, Reporting, Team communications, Scheduling, Onboarding, Customer Success, Risk management, Training, Recruiting
+- Tech examples: ClickUp, Asana, GoHighLevel, Airtable, Zapier, Slack, Zoom, Quickbooks Online, Canva, Google Docs, Google Sheets — only suggest tools NOT mentioned on resume
+- Max 3 per category. Choose the most in-demand for online business managers.
 
-Copy skill names EXACTLY as they appear in the taxonomies.
+Copy ALL skill names EXACTLY as they appear in the taxonomies below.
 
 PRIMARY SKILLS TAXONOMY: ${pOpts.map(s => s.name).join(" | ")}
 SECONDARY SKILLS TAXONOMY: ${sOpts.map(s => s.name).join(" | ")}
@@ -154,7 +163,6 @@ ${text.slice(0, 8000)}`
       secondarySkills: ((obj||{}).secondarySkills || []).map(n => match(n, sO)).filter(Boolean),
       techSkills:      ((obj||{}).techSkills      || []).map(n => match(n, tO)).filter(Boolean),
     });
-    // Support both old format (flat) and new format (foundSkills/maybeSkills)
     const found = parsed.foundSkills || parsed;
     const maybe = parsed.maybeSkills || {};
     return {
@@ -166,6 +174,7 @@ ${text.slice(0, 8000)}`
     return { found: { primarySkills:[], secondarySkills:[], techSkills:[] }, maybe: { primarySkills:[], secondarySkills:[], techSkills:[] }, rate: "" };
   }
 }
+
 
 // ── PDF text extraction ──────────────────────────────────────────
 async function extractText(file) {
@@ -413,18 +422,20 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
         </div>
 
         {[["primarySkills","Primary Skills"],["secondarySkills","Secondary Skills"],["techSkills","Technology Skills"]].map(([key,lbl]) => (
-          found[key].length === 0 ? null :
           <div key={key} className="sug-card">
             <div className="sug-hdr">
               <span className="sug-lbl">{lbl}</span>
               <span className="sug-cnt">{found[key].length} found</span>
             </div>
-            <div className="tags">
-              {found[key].map(sk => {
-                const on = selFound[key].some(x => x.id === sk.id);
-                return <button key={sk.id} className={`sug${on?"":" off"}`} onClick={() => toggleFound(key, sk)}>{on?"✓":"✕"} {sk.name}</button>;
-              })}
-            </div>
+            {found[key].length === 0
+              ? <span className="empty">None clearly identified from your resume</span>
+              : <div className="tags">
+                  {found[key].map(sk => {
+                    const on = selFound[key].some(x => x.id === sk.id);
+                    return <button key={sk.id} className={`sug${on?"":" off"}`} onClick={() => toggleFound(key, sk)}>{on?"✓":"✕"} {sk.name}</button>;
+                  })}
+                </div>
+            }
           </div>
         ))}
 
@@ -458,48 +469,38 @@ function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReup
           These are in-demand OBM skills that weren't clearly shown on your resume. Answer yes or no for each — it only takes a moment.
         </div>
 
-        {allMaybe.map(sk => (
-          <div key={sk.id} style={{
-            border: maybeAnswers[sk.id] === true ? "2px solid #7FBFB8" : maybeAnswers[sk.id] === false ? "1px solid #E0E1E1" : "1px solid #E0E1E1",
-            borderRadius: 8, padding: "16px 20px", marginBottom: 12,
-            background: maybeAnswers[sk.id] === true ? "#E8F4F3" : maybeAnswers[sk.id] === false ? "#FAFAFA" : "#FFFFFF",
-            transition: "all 0.2s",
-          }}>
-            <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:16}}>
-              <div>
-                <div style={{fontFamily:"Raleway,sans-serif",fontWeight:600,fontSize:14,color: maybeAnswers[sk.id] === false ? "#A0A0A0" : "#1A1A1A",marginBottom:2}}>
-                  {sk.name}
-                </div>
-                <div style={{fontSize:12,color:"#6B6B6B"}}>
-                  Do you have experience with this?
-                </div>
+        {[
+            { key: "primarySkills", label: "Primary Skills", items: maybe.primarySkills },
+            { key: "secondarySkills", label: "Secondary Skills", items: maybe.secondarySkills },
+            { key: "techSkills", label: "Technology Skills", items: maybe.techSkills },
+          ].filter(g => g.items.length > 0).map(({ key, label, items }) => (
+            <div key={key} style={{marginBottom:20}}>
+              <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:10}}>
+                {label}
               </div>
-              <div style={{display:"flex",gap:8,flexShrink:0}}>
-                <button
-                  onClick={() => setMaybeAnswers(p => ({...p, [sk.id]: true}))}
-                  style={{
-                    padding:"8px 16px", borderRadius:6, fontSize:13, fontWeight:600,
-                    cursor:"pointer", border:"none", transition:"all 0.15s",
-                    background: maybeAnswers[sk.id] === true ? "#7FBFB8" : "#F1F2F2",
-                    color: maybeAnswers[sk.id] === true ? "#FFFFFF" : "#6B6B6B",
-                  }}>
-                  ✓ Yes
-                </button>
-                <button
-                  onClick={() => setMaybeAnswers(p => ({...p, [sk.id]: false}))}
-                  style={{
-                    padding:"8px 16px", borderRadius:6, fontSize:13, fontWeight:600,
-                    cursor:"pointer", border:"none", transition:"all 0.15s",
-                    background: maybeAnswers[sk.id] === false ? "#F1F2F2" : "#F1F2F2",
-                    color: maybeAnswers[sk.id] === false ? "#1A1A1A" : "#6B6B6B",
-                    textDecoration: maybeAnswers[sk.id] === false ? "line-through" : "none",
-                  }}>
-                  ✕ No
-                </button>
-              </div>
+              {items.map(sk => (
+                <div key={sk.id} style={{
+                  border: maybeAnswers[sk.id] === true ? "2px solid #7FBFB8" : "1px solid #E0E1E1",
+                  borderRadius: 8, padding: "14px 18px", marginBottom: 10,
+                  background: maybeAnswers[sk.id] === true ? "#E8F4F3" : maybeAnswers[sk.id] === false ? "#FAFAFA" : "#FFFFFF",
+                  transition: "all 0.2s",
+                }}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+                    <div>
+                      <div style={{fontFamily:"Raleway,sans-serif",fontWeight:600,fontSize:14,color:maybeAnswers[sk.id]===false?"#A0A0A0":"#1A1A1A",marginBottom:2}}>
+                        {sk.name}
+                      </div>
+                      <div style={{fontSize:12,color:"#6B6B6B"}}>Do you have experience with this?</div>
+                    </div>
+                    <div style={{display:"flex",gap:8,flexShrink:0}}>
+                      <button onClick={() => setMaybeAnswers(p => ({...p,[sk.id]:true}))} style={{padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,cursor:"pointer",border:"none",transition:"all 0.15s",background:maybeAnswers[sk.id]===true?"#7FBFB8":"#F1F2F2",color:maybeAnswers[sk.id]===true?"#FFFFFF":"#6B6B6B"}}>✓ Yes</button>
+                      <button onClick={() => setMaybeAnswers(p => ({...p,[sk.id]:false}))} style={{padding:"8px 16px",borderRadius:6,fontSize:13,fontWeight:600,cursor:"pointer",border:"none",transition:"all 0.15s",background:"#F1F2F2",color:maybeAnswers[sk.id]===false?"#F15D60":"#6B6B6B",textDecoration:maybeAnswers[sk.id]===false?"line-through":"none"}}>✕ No</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        ))}
+          ))}
 
         <div className="card" style={{marginBottom:16,marginTop:8}}>
           <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:12,letterSpacing:".1em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:14}}>
