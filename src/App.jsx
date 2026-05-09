@@ -29,6 +29,7 @@ const F_PHOTO          = "fldc5TYw5ZfYlsvjy"; // Profile pic
 const F_CITY           = "fldNUlNQFKbH3AkUE"; // City2
 const F_STATE          = "fldzqRGsZwi2ghuAK"; // State2
 const F_FACTS          = "fldvAcP6bqXnFwcQJ"; // Facts & Hobbies
+const F_INDUSTRY       = "fldSp39omu7EaB0c4"; // Industry List (multipleSelects)
 
 // Matching field IDs
 const F_MATCH_STATUS = "fldmcFMJQ5uPCCrsE";
@@ -97,6 +98,7 @@ async function saveProfile(recordId, profile) {
     ...(profile.city  !== undefined && { [F_CITY]:  profile.city }),
     ...(profile.state !== undefined && { [F_STATE]: profile.state }),
     ...(profile.facts !== undefined && { [F_FACTS]: profile.facts }),
+    ...(profile.industries !== undefined && { "Industry List": profile.industries }),
   };
   // Remove empty arrays
   Object.keys(fields).forEach(k => {
@@ -607,7 +609,8 @@ export default function App() {
   const [pOpts, setPOpts]   = useState([]);
   const [sOpts, setSOpts]   = useState([]);
   const [tOpts, setTOpts]   = useState([]);
-  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null, city:"", state:"", facts:"" });
+  const [indOpts, setIndOpts] = useState([]); // industry options
+  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null, city:"", state:"", facts:"", industries:[] });
   const [sug, setSug]       = useState(null);
   const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
@@ -619,13 +622,22 @@ export default function App() {
     setStage("loading");
     try {
       // Load taxonomy fresh every login
-      const [p, s, t, rec] = await Promise.all([
+      const [p, s, t, indRec, rec] = await Promise.all([
         getSkills(TBL_PRIMARY, "Skill Name"),
         getSkills(TBL_SECONDARY, "Label"),
         getSkills(TBL_TECH, "Tech name"),
+        // Load industry options by fetching records with data and collecting unique values
+        atFetch(`/${TBL_PM}?fields%5B%5D=${F_INDUSTRY}&maxRecords=200`).then(d => {
+          const seen = new Map();
+          (d.records || []).forEach(r => {
+            const vals = r.fields["Industry List"] || r.fields[F_INDUSTRY] || [];
+            vals.forEach(v => { const name = v?.name || v; if (name && !seen.has(name)) seen.set(name, v?.id || name); });
+          });
+          return [...seen.entries()].map(([name, id]) => ({ id, name })).sort((a,b) => a.name.localeCompare(b.name));
+        }),
         findByEmail(email.toLowerCase().trim()),
       ]);
-      setPOpts(p); setSOpts(s); setTOpts(t);
+      setPOpts(p); setSOpts(s); setTOpts(t); setIndOpts(indRec);
       if (!rec) { setErr("No profile found for that email. Contact Prowess support."); setStage("email"); return; }
       setObm(rec);
       const m = await getMatches(rec.id);
@@ -654,6 +666,7 @@ export default function App() {
         city:          f["City2"]          || f[F_CITY]  || "",
         state:         f["State2"]         || f[F_STATE] || "",
         facts:         f["Facts & Hobbies"]|| f[F_FACTS] || "",
+        industries:    (f["Industry List"] || f[F_INDUSTRY] || []).map(v => v?.name || v).filter(Boolean),
       });
       // First-time user if no skills at all
       const hasSkills = 
@@ -947,6 +960,41 @@ export default function App() {
                   <div className="ch"><span className={`ct ${ed?"on":""}`}>Technology Skills</span></div>
                   <SkillPicker label="Technology Skills" selected={profile.techSkills} options={tOpts} onChange={v => setProfile(p => ({...p, techSkills:v}))} editing={ed} catMap={TECH_CATS} />
                 </div>
+                <div className={`card ${ed?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Industry Experience</span></div>
+                  {ed ? (
+                    <div>
+                      <div className="tags" style={{marginBottom: profile.industries.length ? 12 : 0}}>
+                        {profile.industries.map(ind => (
+                          <span key={ind} className="tag-e">
+                            {ind}
+                            <button className="del" onClick={() => setProfile(p => ({...p, industries: p.industries.filter(x => x !== ind)}))}>✕</button>
+                          </span>
+                        ))}
+                      </div>
+                      {profile.industries.length > 0 && <div className="div-lbl">Add more</div>}
+                      <div className="tags">
+                        {indOpts
+                          .filter(o => !profile.industries.includes(o.name))
+                          .map(o => (
+                            <button key={o.id} className="opt"
+                              onClick={() => setProfile(p => ({...p, industries: [...p.industries, o.name]}))}>
+                              + {o.name}
+                            </button>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="tags">
+                      {profile.industries.length
+                        ? profile.industries.map(ind => <span key={ind} className="tag">{ind}</span>)
+                        : <span className="empty">No industry experience added yet</span>
+                      }
+                    </div>
+                  )}
+                </div>
+
                 <div className={`card ${ed?"ed":""}`}>
                   <div className="ch"><span className={`ct ${ed?"on":""}`}>Availability</span></div>
                   {ed
