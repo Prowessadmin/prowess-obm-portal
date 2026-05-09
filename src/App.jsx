@@ -26,6 +26,9 @@ const F_DISC_PRIMARY   = "fld7ONyQ5vTA5pyI0";
 const F_DISC_SECONDARY = "fld8CjQJ8XpY0NmbH";
 const F_VARK           = "fldV3Z9O2N8pXRUVe";
 const F_PHOTO          = "fldc5TYw5ZfYlsvjy"; // Profile pic
+const F_CITY           = "fldNUlNQFKbH3AkUE"; // City2
+const F_STATE          = "fldzqRGsZwi2ghuAK"; // State2
+const F_FACTS          = "fldvAcP6bqXnFwcQJ"; // Facts & Hobbies
 
 // Matching field IDs
 const F_MATCH_STATUS = "fldmcFMJQ5uPCCrsE";
@@ -589,7 +592,7 @@ export default function App() {
   const [pOpts, setPOpts]   = useState([]);
   const [sOpts, setSOpts]   = useState([]);
   const [tOpts, setTOpts]   = useState([]);
-  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null });
+  const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"", discPrimary:null, discSecondary:null, vark:null, photoUrl:null, city:"", state:"", facts:"" });
   const [sug, setSug]       = useState(null);
   const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
@@ -633,6 +636,9 @@ export default function App() {
         discSecondary: selName(f["Secondary Disc Trait"] || f[F_DISC_SECONDARY]),
         vark:          selName(f["Vark Style"]           || f[F_VARK]),
         photoUrl:      (f["Profile pic"] || f[F_PHOTO])?.[0]?.url || null,
+        city:          f["City2"]          || f[F_CITY]  || "",
+        state:         f["State2"]         || f[F_STATE] || "",
+        facts:         f["Facts & Hobbies"]|| f[F_FACTS] || "",
       });
       setStage("profile");
     } catch(e) {
@@ -738,9 +744,14 @@ export default function App() {
                 </div>
                 {/* Info */}
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A",marginBottom:6}}>
+                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A",marginBottom:4}}>
                     {obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}
                   </div>
+                  {(profile.city || profile.state) && (
+                    <div style={{fontSize:13,color:"#6B6B6B",marginBottom:6}}>
+                      📍 {[profile.city, profile.state].filter(Boolean).join(", ")}
+                    </div>
+                  )}
                   <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                     {profile.discPrimary && (
                       <span style={{background:"#E8F4F3",border:"1px solid rgba(127,191,184,.4)",color:"#1F5C58",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>
@@ -833,13 +844,42 @@ export default function App() {
                 </div>
                 <div className={`card ${ed?"ed":""}`}>
                   <div className="ch"><span className={`ct ${ed?"on":""}`}>Details</span></div>
-                  {ed
-                    ? <div style={{marginBottom:0}}>
-                        <label className="fl">Preferred Hourly Rate</label>
-                        <div className="rate-wrap"><span className="rate-fix rate-l">$</span><input className="rate-in" type="number" min="0" placeholder="65" value={profile.rate} onChange={e => setProfile(p => ({...p, rate:e.target.value}))} /><span className="rate-fix rate-r">/hr</span></div>
+                  {ed ? (
+                    <div style={{display:"grid",gap:16}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <div>
+                          <label className="fl">City</label>
+                          <input className="fi" placeholder="Austin" value={profile.city} onChange={e => setProfile(p => ({...p,city:e.target.value}))} />
+                        </div>
+                        <div>
+                          <label className="fl">State</label>
+                          <input className="fi" placeholder="Texas" value={profile.state} onChange={e => setProfile(p => ({...p,state:e.target.value}))} />
+                        </div>
                       </div>
-                    : <div style={{display:"flex",gap:16,alignItems:"baseline"}}><span style={{fontSize:12,textTransform:"uppercase",letterSpacing:".08em",color:"#A0A0A0",width:90,flexShrink:0}}>Rate</span><span style={{fontSize:14,color:profile.rate?"#1A1A1A":"#A0A0A0"}}>{profile.rate?`$${profile.rate}/hr`:"Not set"}</span></div>
-                  }
+                      <div>
+                        <label className="fl">Preferred Hourly Rate</label>
+                        <div className="rate-wrap"><span className="rate-fix rate-l">$</span><input className="rate-in" type="number" min="0" placeholder="65" value={profile.rate} onChange={e => setProfile(p => ({...p,rate:e.target.value}))} /><span className="rate-fix rate-r">/hr</span></div>
+                      </div>
+                      <div>
+                        <label className="fl">Facts &amp; Hobbies</label>
+                        <textarea className="fi" placeholder="Share a little about yourself..." value={profile.facts} onChange={e => setProfile(p => ({...p,facts:e.target.value}))} style={{minHeight:100,resize:"vertical",lineHeight:1.6}} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{display:"grid",gap:14}}>
+                      {[
+                        ["Location", [profile.city, profile.state].filter(Boolean).join(", ")],
+                        ["Rate",     profile.rate ? `$${profile.rate}/hr` : ""],
+                        ["Facts & Hobbies", profile.facts],
+                      ].map(([lbl, val]) => val ? (
+                        <div key={lbl}>
+                          <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:".08em",color:"#A0A0A0",marginBottom:4,fontFamily:"Raleway,sans-serif",fontWeight:600}}>{lbl}</div>
+                          <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
+                        </div>
+                      ) : null)}
+                      {!profile.city && !profile.rate && !profile.facts && <span className="empty">No details added yet</span>}
+                    </div>
+                  )}
                 </div>
               </>}
             </>}
