@@ -25,7 +25,7 @@ const F_NOTES      = "Notes";
 const F_DISC_PRIMARY   = "fld7ONyQ5vTA5pyI0";
 const F_DISC_SECONDARY = "fld8CjQJ8XpY0NmbH";
 const F_VARK           = "fldV3Z9O2N8pXRUVe";
-const F_PHOTO          = "fldkKq2zu0YUP2Tte";
+const F_PHOTO          = "fldc5TYw5ZfYlsvjy"; // Profile pic
 
 // Matching field IDs
 const F_MATCH_STATUS = "fldmcFMJQ5uPCCrsE";
@@ -619,6 +619,7 @@ export default function App() {
       console.log("Primary IDs:", [...pIds], "| Options:", p.length);
       console.log("Secondary IDs:", [...sIds], "| Options:", s.length);
       console.log("Tech IDs:", [...tIds], "| Options:", t.length);
+      const selName = v => v?.name || v || null;
       setProfile({
         primarySkills:   p.filter(o => pIds.has(o.id)),
         secondarySkills: s.filter(o => sIds.has(o.id)),
@@ -626,6 +627,10 @@ export default function App() {
         hours: f[F_HOURS] || [],
         rate:  f[F_RATE] != null ? String(f[F_RATE]) : "",
         notes: f[F_NOTES] || "",
+        discPrimary:   selName(f[F_DISC_PRIMARY]),
+        discSecondary: selName(f[F_DISC_SECONDARY]),
+        vark:          selName(f[F_VARK]),
+        photoUrl:      f[F_PHOTO]?.[0]?.url || null,
       });
       setStage("profile");
     } catch(e) {
