@@ -105,28 +105,39 @@ async function parseResume(text, pOpts, sOpts, tOpts) {
       model: "claude-sonnet-4-20250514",
       max_tokens: 1500,
       system: `You are a resume skills extractor for Prowess Project OBM matching.
-Read the resume and identify ALL skills from our taxonomy this person has demonstrated.
+Read the resume carefully and return two things:
+1. The TOP 5 most clearly demonstrated skills from the resume (high confidence matches only)
+2. Up to 5 skills that are common for OBMs but NOT clearly shown on this resume — skills worth asking about
+
 Return ONLY valid JSON — no markdown, no preamble.
-Format: {"primarySkills":["exact name"],"secondarySkills":["exact name"],"techSkills":["exact name"],"rate":""}`,
+Format: {
+  "foundSkills": {"primarySkills":["exact name"],"secondarySkills":["exact name"],"techSkills":["exact name"]},
+  "maybeSkills": {"primarySkills":["exact name"],"secondarySkills":["exact name"],"techSkills":["exact name"]},
+  "rate": ""
+}
+foundSkills = clearly demonstrated, max 5 total across all categories
+maybeSkills = common OBM skills not shown on resume, max 5 total, worth asking about`,
       messages: [{
         role: "user",
-        content: `Identify every skill this person has demonstrated. Infer from job descriptions — don't require explicit skill lists.
+        content: `Read this resume. Return two skill sets:
 
-Examples of inference:
-- "managed a team" → Resource Management, Team communications
-- "oversaw budgets" → Budgeting, Financial reporting/modeling  
-- "ran social media" → Social media, Content creation, Digital marketing
-- "used QuickBooks" → Quickbooks Online (or relevant variant)
-- "managed projects" → Project Management
-- "improved processes" → Process Improvement
+FOUND SKILLS (max 5 total — only high-confidence matches clearly shown on resume):
+- Infer from responsibilities: "managed projects" → Project Management
+- "oversaw budgets" → Budgeting
+- "led a team" → Resource Management, Team communications
+- "ran social media campaigns" → Social media, Digital marketing
+- Only include skills you are CONFIDENT about
 
-Be VERY GENEROUS. Copy skill names EXACTLY as shown in taxonomies.
+MAYBE SKILLS (max 5 total — common OBM skills NOT shown on resume, worth asking about):
+- Pick from high-demand OBM skills: Project Management, Process Improvement, Strategic planning, CRM management, Reporting, Team communications, Scheduling, Onboarding, Customer Success
+- Only suggest skills NOT already in foundSkills
+- These will be shown as yes/no questions to the OBM
 
-PRIMARY SKILLS: ${pOpts.map(s => s.name).join(" | ")}
+Copy skill names EXACTLY as they appear in the taxonomies.
 
-SECONDARY SKILLS: ${sOpts.map(s => s.name).join(" | ")}
-
-TECH SKILLS: ${tOpts.map(s => s.name).join(" | ")}
+PRIMARY SKILLS TAXONOMY: ${pOpts.map(s => s.name).join(" | ")}
+SECONDARY SKILLS TAXONOMY: ${sOpts.map(s => s.name).join(" | ")}
+TECH SKILLS TAXONOMY: ${tOpts.map(s => s.name).join(" | ")}
 
 RESUME:
 ${text.slice(0, 8000)}`
@@ -138,14 +149,21 @@ ${text.slice(0, 8000)}`
   try {
     const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
     const match = (name, opts) => opts.find(o => o.name.toLowerCase() === name.trim().toLowerCase());
+    const mapSkills = (obj, pO, sO, tO) => ({
+      primarySkills:   ((obj||{}).primarySkills   || []).map(n => match(n, pO)).filter(Boolean),
+      secondarySkills: ((obj||{}).secondarySkills || []).map(n => match(n, sO)).filter(Boolean),
+      techSkills:      ((obj||{}).techSkills      || []).map(n => match(n, tO)).filter(Boolean),
+    });
+    // Support both old format (flat) and new format (foundSkills/maybeSkills)
+    const found = parsed.foundSkills || parsed;
+    const maybe = parsed.maybeSkills || {};
     return {
-      primarySkills:   (parsed.primarySkills   || []).map(n => match(n, pOpts)).filter(Boolean),
-      secondarySkills: (parsed.secondarySkills || []).map(n => match(n, sOpts)).filter(Boolean),
-      techSkills:      (parsed.techSkills      || []).map(n => match(n, tOpts)).filter(Boolean),
+      found: mapSkills(found, pOpts, sOpts, tOpts),
+      maybe: mapSkills(maybe, pOpts, sOpts, tOpts),
       rate: parsed.rate || "",
     };
   } catch {
-    return { primarySkills: [], secondarySkills: [], techSkills: [], rate: "" };
+    return { found: { primarySkills:[], secondarySkills:[], techSkills:[] }, maybe: { primarySkills:[], secondarySkills:[], techSkills:[] }, rate: "" };
   }
 }
 
@@ -326,66 +344,178 @@ function Badge({ s }) {
   return <span className={`badge ${cls}`}>{lbl}</span>;
 }
 
-// ── Suggestion review screen ─────────────────────────────────────
-function SugReview({ sug, onAdd, onReplace, onManual, onReupload }) {
-  const [sel, setSel] = useState({
-    primarySkills:   [...sug.primarySkills],
-    secondarySkills: [...sug.secondarySkills],
-    techSkills:      [...sug.techSkills],
+// ── Suggestion review screen (two-step) ──────────────────────────
+function SugReview({ sug, step, onStepChange, onAdd, onReplace, onManual, onReupload }) {
+  const found = sug.found || { primarySkills:[], secondarySkills:[], techSkills:[] };
+  const maybe = sug.maybe || { primarySkills:[], secondarySkills:[], techSkills:[] };
+
+  // Step 1 state — toggle found skills
+  const [selFound, setSelFound] = useState({
+    primarySkills:   [...found.primarySkills],
+    secondarySkills: [...found.secondarySkills],
+    techSkills:      [...found.techSkills],
   });
-  const toggle = (f, sk) => {
-    const has = sel[f].some(x => x.id === sk.id);
-    setSel(p => ({ ...p, [f]: has ? p[f].filter(x => x.id !== sk.id) : [...p[f], sk] }));
+
+  // Step 2 state — yes/no for maybe skills
+  // Each skill starts as null (unanswered), true (yes), false (no)
+  const allMaybe = [...maybe.primarySkills, ...maybe.secondarySkills, ...maybe.techSkills];
+  const [maybeAnswers, setMaybeAnswers] = useState(() => {
+    const init = {};
+    allMaybe.forEach(sk => { init[sk.id] = null; });
+    return init;
+  });
+
+  const toggleFound = (f, sk) => {
+    const has = selFound[f].some(x => x.id === sk.id);
+    setSelFound(p => ({ ...p, [f]: has ? p[f].filter(x => x.id !== sk.id) : [...p[f], sk] }));
   };
-  const total = sug.primarySkills.length + sug.secondarySkills.length + sug.techSkills.length;
-  const totalSel = sel.primarySkills.length + sel.secondarySkills.length + sel.techSkills.length;
 
-  if (total === 0) return (
-    <div>
-      <div className="warn"><strong>No matching skills found</strong><p>Claude couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or the file couldn't be read. Try editing manually or uploading a different file.</p></div>
-      <div className="act-row">
-        <button className="btn-ts" onClick={onManual}>Edit My Skills Manually</button>
-        <button className="btn-to" onClick={onReupload}>Try a Different File</button>
-      </div>
-    </div>
-  );
+  const totalFound = found.primarySkills.length + found.secondarySkills.length + found.techSkills.length;
+  const totalSelFound = selFound.primarySkills.length + selFound.secondarySkills.length + selFound.techSkills.length;
 
-  return (
-    <div>
-      <div className="info" style={{marginBottom:24}}>
-        <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>✓ Claude found {total} skill{total!==1?"s":""} on your resume</strong>
-        Tap any skill to deselect it. Then choose how to apply them.
-      </div>
-      {[["primarySkills","Primary Skills"],["secondarySkills","Secondary Skills"],["techSkills","Technology Skills"]].map(([key,lbl]) => (
-        <div key={key} className="sug-card">
-          <div className="sug-hdr">
-            <span className="sug-lbl">{lbl}</span>
-            <span className="sug-cnt">{sug[key].length} found</span>
-          </div>
-          {sug[key].length === 0
-            ? <span className="empty">None found on your resume</span>
-            : <div className="tags">
-                {sug[key].map(sk => {
-                  const on = sel[key].some(x => x.id === sk.id);
-                  return <button key={sk.id} className={`sug${on?"":" off"}`} onClick={() => toggle(key, sk)}>{on?"✓":"✕"} {sk.name}</button>;
-                })}
-              </div>
-          }
-        </div>
-      ))}
-      <div className="card" style={{marginBottom:16}}>
-        <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:12,letterSpacing:".1em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:14}}>
-          Apply {totalSel} selected skill{totalSel!==1?"s":""}:
+  // Merge found + yes-answered maybe skills
+  function buildFinalSelection() {
+    const yesSkills = allMaybe.filter(sk => maybeAnswers[sk.id] === true);
+    // Figure out which taxonomy each yes skill belongs to
+    const yesPrimary   = maybe.primarySkills.filter(sk => maybeAnswers[sk.id] === true);
+    const yesSecondary = maybe.secondarySkills.filter(sk => maybeAnswers[sk.id] === true);
+    const yesTech      = maybe.techSkills.filter(sk => maybeAnswers[sk.id] === true);
+    const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...b.filter(x => !ids.has(x.id))]; };
+    return {
+      primarySkills:   merge(selFound.primarySkills, yesPrimary),
+      secondarySkills: merge(selFound.secondarySkills, yesSecondary),
+      techSkills:      merge(selFound.techSkills, yesTech),
+    };
+  }
+
+  // ── STEP 1: Found skills ──
+  if (step === "found") {
+    if (totalFound === 0) return (
+      <div>
+        <div className="warn">
+          <strong>No matching skills found</strong>
+          <p>Claude couldn't identify skills from this file that match our taxonomy. This can happen if the resume uses different terminology, or the file couldn't be read correctly. Try editing manually or uploading a different file.</p>
         </div>
         <div className="act-row">
-          <button className="btn-ts" onClick={() => onAdd(sel)}>＋ Add to my existing skills</button>
-          <button className="btn-to" onClick={() => onReplace(sel)}>Replace all my skills</button>
-          <button onClick={onManual} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline",padding:"10px 4px"}}>Skip — edit manually</button>
+          <button className="btn-ts" onClick={onManual}>Edit My Skills Manually</button>
+          <button className="btn-to" onClick={onReupload}>Try a Different File</button>
         </div>
       </div>
-      <button onClick={onReupload} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>Upload a different file</button>
-    </div>
-  );
+    );
+
+    return (
+      <div>
+        <div className="info" style={{marginBottom:24}}>
+          <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>
+            ✓ Claude found {totalFound} skill{totalFound!==1?"s":""} on your resume
+          </strong>
+          These are the skills most clearly shown on your resume. Tap any to deselect it.
+        </div>
+
+        {[["primarySkills","Primary Skills"],["secondarySkills","Secondary Skills"],["techSkills","Technology Skills"]].map(([key,lbl]) => (
+          found[key].length === 0 ? null :
+          <div key={key} className="sug-card">
+            <div className="sug-hdr">
+              <span className="sug-lbl">{lbl}</span>
+              <span className="sug-cnt">{found[key].length} found</span>
+            </div>
+            <div className="tags">
+              {found[key].map(sk => {
+                const on = selFound[key].some(x => x.id === sk.id);
+                return <button key={sk.id} className={`sug${on?"":" off"}`} onClick={() => toggleFound(key, sk)}>{on?"✓":"✕"} {sk.name}</button>;
+              })}
+            </div>
+          </div>
+        ))}
+
+        <div className="card" style={{marginBottom:16}}>
+          <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:12,letterSpacing:".1em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:14}}>
+            {totalSelFound} skill{totalSelFound!==1?"s":""} selected
+          </div>
+          <div className="act-row">
+            {allMaybe.length > 0
+              ? <button className="btn-ts" onClick={() => onStepChange("maybe")}>Next — Review more skills →</button>
+              : <button className="btn-ts" onClick={() => onAdd(selFound)}>＋ Add to my existing skills</button>
+            }
+            <button onClick={onManual} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline",padding:"10px 4px"}}>Skip — edit manually</button>
+          </div>
+        </div>
+        <button onClick={onReupload} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>Upload a different file</button>
+      </div>
+    );
+  }
+
+  // ── STEP 2: Maybe skills (yes/no cards) ──
+  if (step === "maybe") {
+    const unanswered = allMaybe.filter(sk => maybeAnswers[sk.id] === null).length;
+
+    return (
+      <div>
+        <div className="info" style={{marginBottom:24}}>
+          <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>
+            Do you also have these skills?
+          </strong>
+          These are in-demand OBM skills that weren't clearly shown on your resume. Answer yes or no for each — it only takes a moment.
+        </div>
+
+        {allMaybe.map(sk => (
+          <div key={sk.id} style={{
+            border: maybeAnswers[sk.id] === true ? "2px solid #7FBFB8" : maybeAnswers[sk.id] === false ? "1px solid #E0E1E1" : "1px solid #E0E1E1",
+            borderRadius: 8, padding: "16px 20px", marginBottom: 12,
+            background: maybeAnswers[sk.id] === true ? "#E8F4F3" : maybeAnswers[sk.id] === false ? "#FAFAFA" : "#FFFFFF",
+            transition: "all 0.2s",
+          }}>
+            <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:16}}>
+              <div>
+                <div style={{fontFamily:"Raleway,sans-serif",fontWeight:600,fontSize:14,color: maybeAnswers[sk.id] === false ? "#A0A0A0" : "#1A1A1A",marginBottom:2}}>
+                  {sk.name}
+                </div>
+                <div style={{fontSize:12,color:"#6B6B6B"}}>
+                  Do you have experience with this?
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,flexShrink:0}}>
+                <button
+                  onClick={() => setMaybeAnswers(p => ({...p, [sk.id]: true}))}
+                  style={{
+                    padding:"8px 16px", borderRadius:6, fontSize:13, fontWeight:600,
+                    cursor:"pointer", border:"none", transition:"all 0.15s",
+                    background: maybeAnswers[sk.id] === true ? "#7FBFB8" : "#F1F2F2",
+                    color: maybeAnswers[sk.id] === true ? "#FFFFFF" : "#6B6B6B",
+                  }}>
+                  ✓ Yes
+                </button>
+                <button
+                  onClick={() => setMaybeAnswers(p => ({...p, [sk.id]: false}))}
+                  style={{
+                    padding:"8px 16px", borderRadius:6, fontSize:13, fontWeight:600,
+                    cursor:"pointer", border:"none", transition:"all 0.15s",
+                    background: maybeAnswers[sk.id] === false ? "#F1F2F2" : "#F1F2F2",
+                    color: maybeAnswers[sk.id] === false ? "#1A1A1A" : "#6B6B6B",
+                    textDecoration: maybeAnswers[sk.id] === false ? "line-through" : "none",
+                  }}>
+                  ✕ No
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div className="card" style={{marginBottom:16,marginTop:8}}>
+          <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:12,letterSpacing:".1em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:14}}>
+            Apply your selections:
+          </div>
+          <div className="act-row">
+            <button className="btn-ts" onClick={() => onAdd(buildFinalSelection())}>＋ Add all selected to my profile</button>
+            <button onClick={() => onStepChange("found")} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline",padding:"10px 4px"}}>← Back to found skills</button>
+          </div>
+        </div>
+        <button onClick={onManual} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>Skip — edit manually instead</button>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ── Categorized skill picker ─────────────────────────────────────
@@ -454,6 +584,7 @@ export default function App() {
   const [tOpts, setTOpts]   = useState([]);
   const [profile, setProfile] = useState({ primarySkills:[], secondarySkills:[], techSkills:[], hours:[], rate:"", notes:"" });
   const [sug, setSug]       = useState(null);
+  const [sugStep, setSugStep] = useState("found"); // "found" | "maybe"
   const [parsing, setParsing] = useState(false);
   const hours = ["5 hours per week","10 hours per week","20 hours per week","30 hours per week"];
 
@@ -505,6 +636,7 @@ export default function App() {
       if (text.length < 50) { setErr("Couldn't read this file — try a .txt or .docx version."); setParsing(false); return; }
       const result = await parseResume(text, pOpts, sOpts, tOpts);
       setSug(result);
+      setSugStep("found"); // "found" | "maybe"
       setEMode("review");
     } catch(e) {
       setErr("Resume parse failed: " + e.message);
@@ -516,12 +648,12 @@ export default function App() {
   function addToExisting(sel) {
     const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...b.filter(x => !ids.has(x.id))]; };
     setProfile(p => ({ ...p, primarySkills: merge(p.primarySkills, sel.primarySkills), secondarySkills: merge(p.secondarySkills, sel.secondarySkills), techSkills: merge(p.techSkills, sel.techSkills) }));
-    setSug(null); setEMode("manual");
+    setSug(null); setSugStep("found"); setEMode("manual");
   }
 
   function replaceAll(sel) {
     setProfile(p => ({ ...p, primarySkills: sel.primarySkills, secondarySkills: sel.secondarySkills, techSkills: sel.techSkills }));
-    setSug(null); setEMode("manual");
+    setSug(null); setSugStep("found"); setEMode("manual");
   }
 
   async function save() {
@@ -620,7 +752,7 @@ export default function App() {
               </div>}
 
               {/* Suggestion review */}
-              {editing && eMode==="review" && sug && <SugReview sug={sug} onAdd={addToExisting} onReplace={replaceAll} onManual={() => { setSug(null); setEMode("manual"); }} onReupload={() => { setSug(null); setEMode("resume"); }} />}
+              {editing && eMode==="review" && sug && <SugReview sug={sug} step={sugStep} onStepChange={setSugStep} onAdd={addToExisting} onReplace={replaceAll} onManual={() => { setSug(null); setSugStep("found"); setEMode("manual"); }} onReupload={() => { setSug(null); setSugStep("found"); setEMode("resume"); }} />}
 
               {/* Edit legend */}
               {ed && <div className="legend"><div className="li"><div className="dot-t"></div> Your current skills (tap ✕ to remove)</div><div className="li"><div className="dot-g"></div> Available to add</div></div>}
