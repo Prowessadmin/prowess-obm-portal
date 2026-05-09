@@ -360,15 +360,10 @@ function openCloudinaryAvatarWidget(onSuccess, onError) {
   return window.cloudinary.openUploadWidget({
     cloudName: CLOUDINARY_CLOUD,
     uploadPreset: CLOUDINARY_PRESET,
+    unsigned: true,
     sources: ["local", "camera", "url"],
-    cropping: true,
-    croppingAspectRatio: 1,
-    croppingShowDimensions: true,
-    showSkipCropButton: false,
     multiple: false,
     maxFiles: 1,
-    clientAllowedFormats: ["png", "jpg", "jpeg", "webp"],
-    maxImageFileSize: 5_000_000,
     styles: {
       palette: {
         window: "#FFFFFF", windowBorder: "#E0E1E1", tabIcon: "#7FBFB8",
@@ -871,7 +866,7 @@ export default function App() {
   const [onboardSaving, setOnboardSaving] = useState(false);
   const [infoEditing, setInfoEditing] = useState(false);
   const [infoSaving, setInfoSaving] = useState(false);
-  const [infoDraft, setInfoDraft] = useState({ city:"", state:"", rate:"", facts:"" });
+  const [infoDraft, setInfoDraft] = useState({ city:"", state:"", rate:"", facts:"", discPrimary:"", discSecondary:"", vark:"" });
   const [spotlight, setSpotlight] = useState(null); // { id, fields } | null
   const [spotlightLoaded, setSpotlightLoaded] = useState(false);
   const [spotlightLoading, setSpotlightLoading] = useState(false);
@@ -906,7 +901,16 @@ export default function App() {
           setPhotoUploading(false);
         }
       },
-      (e) => { console.error("Cloudinary error:", e); setErr("Photo upload failed."); }
+      (e) => {
+        console.error("Cloudinary error (full):", e);
+        const detail =
+          e?.statusText ||
+          e?.message ||
+          e?.status?.message ||
+          (typeof e === "string" ? e : null) ||
+          (() => { try { return JSON.stringify(e); } catch { return "unknown"; } })();
+        setErr(`Photo upload failed: ${detail}. Check the browser console for full details, and verify the Cloudinary preset "${CLOUDINARY_PRESET}" is set to Unsigned.`);
+      }
     );
   }
 
@@ -1313,9 +1317,27 @@ export default function App() {
                       ) : (
                         <span style={{color:"#A0A0A0",fontStyle:"italic"}}>💰 Add your rate</span>
                       )}
+                      {(profile.discPrimary || profile.discSecondary) ? (
+                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>🎯 DISC: {[profile.discPrimary, profile.discSecondary].filter(Boolean).join(" / ")}</span>
+                      ) : (
+                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>🎯 Add your DISC</span>
+                      )}
+                      {profile.vark ? (
+                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>📚 VARK: {profile.vark}</span>
+                      ) : (
+                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>📚 Add your VARK</span>
+                      )}
                     </div>
                     <button className="btn-ts" style={{padding:"6px 14px",fontSize:11}} onClick={() => {
-                      setInfoDraft({ city: profile.city || "", state: profile.state || "", rate: profile.rate || "", facts: profile.facts || "" });
+                      setInfoDraft({
+                        city: profile.city || "",
+                        state: profile.state || "",
+                        rate: profile.rate || "",
+                        facts: profile.facts || "",
+                        discPrimary: profile.discPrimary || "",
+                        discSecondary: profile.discSecondary || "",
+                        vark: profile.vark || "",
+                      });
                       setInfoEditing(true);
                     }}>Edit Info</button>
                   </div>
@@ -1343,6 +1365,29 @@ export default function App() {
                           <span className="rate-fix rate-r">/hr</span>
                         </div>
                       </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <div>
+                          <label className="fl">DISC — Primary</label>
+                          <select className="fi" value={infoDraft.discPrimary} onChange={e => setInfoDraft(d => ({...d, discPrimary:e.target.value}))}>
+                            <option value="">Not set</option>
+                            {DISC_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="fl">DISC — Secondary</label>
+                          <select className="fi" value={infoDraft.discSecondary} onChange={e => setInfoDraft(d => ({...d, discSecondary:e.target.value}))}>
+                            <option value="">Not set</option>
+                            {DISC_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="fl">VARK Learning Style</label>
+                        <select className="fi" value={infoDraft.vark} onChange={e => setInfoDraft(d => ({...d, vark:e.target.value}))}>
+                          <option value="">Not set</option>
+                          {VARK_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
                       <div>
                         <label className="fl">Facts &amp; Hobbies</label>
                         <textarea className="fi" placeholder="Share a little about yourself..." value={infoDraft.facts} onChange={e => setInfoDraft(d => ({...d, facts:e.target.value}))} style={{minHeight:90,resize:"vertical",lineHeight:1.6}} />
@@ -1352,7 +1397,16 @@ export default function App() {
                       <button className="btn btn-p" style={{width:"auto"}} disabled={infoSaving} onClick={async () => {
                         setInfoSaving(true);
                         try {
-                          const next = { ...profile, city: infoDraft.city, state: infoDraft.state, rate: infoDraft.rate, facts: infoDraft.facts };
+                          const next = {
+                            ...profile,
+                            city: infoDraft.city,
+                            state: infoDraft.state,
+                            rate: infoDraft.rate,
+                            facts: infoDraft.facts,
+                            discPrimary:   infoDraft.discPrimary   || null,
+                            discSecondary: infoDraft.discSecondary || null,
+                            vark:          infoDraft.vark          || null,
+                          };
                           await saveProfile(obm.id, next);
                           setProfile(next);
                           setInfoEditing(false);
