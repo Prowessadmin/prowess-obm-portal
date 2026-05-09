@@ -42,7 +42,9 @@ exports.handler = async (event) => {
 
     const data = await response.json();
     console.log('Claude status:', response.status);
-    console.log('Claude response preview:', JSON.stringify(data).slice(0, 300));
+    // Log full text content so we can debug
+    const textContent = data.content?.find(c => c.type === 'text')?.text || '';
+    console.log('Claude text response:', textContent.slice(0, 1000));
 
     return {
       statusCode: response.status,
