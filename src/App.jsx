@@ -347,6 +347,18 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .mode-icon{font-size:24px;margin-bottom:8px}
 .mode-title{font-family:'Raleway',sans-serif;font-weight:600;font-size:13px;margin-bottom:4px}
 .mode-desc{font-size:12px;color:#6B6B6B;line-height:1.4}
+.welcome-hero{background:linear-gradient(135deg,#7FBFB8 0%,#5EA8A1 100%);padding:48px 40px;border-radius:12px;margin-bottom:28px;position:relative;overflow:hidden}
+.welcome-hero::before{content:'';position:absolute;top:-60px;right:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.1);pointer-events:none}
+.welcome-hero::after{content:'';position:absolute;bottom:-40px;left:-40px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.08);pointer-events:none}
+.welcome-title{font-family:'Raleway',sans-serif;font-size:26px;font-weight:700;color:#fff;margin-bottom:8px;position:relative;z-index:1}
+.welcome-sub{font-size:15px;color:rgba(255,255,255,.85);line-height:1.6;position:relative;z-index:1}
+.welcome-card{background:#fff;border:1px solid #E0E1E1;border-radius:10px;padding:24px;margin-bottom:16px}
+.step-row{display:flex;align-items:flex-start;gap:16px;padding:16px 0;border-bottom:1px solid #F1F2F2}
+.step-row:last-child{border-bottom:none;padding-bottom:0}
+.step-num{width:32px;height:32px;border-radius:50%;background:#7FBFB8;color:#fff;font-family:'Raleway',sans-serif;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-body{}
+.step-title{font-family:'Raleway',sans-serif;font-weight:700;font-size:14px;color:#1A1A1A;margin-bottom:3px}
+.step-desc{font-size:13px;color:#6B6B6B;line-height:1.5}
 `;
 
 // ── Status badge ─────────────────────────────────────────────────
@@ -582,7 +594,7 @@ function SkillPicker({ label, selected, options, onChange, editing, catMap }) {
 
 // ── Main App ─────────────────────────────────────────────────────
 export default function App() {
-  const [stage, setStage]   = useState("email");
+  const [stage, setStage]   = useState("email"); // email | loading | profile | welcome
   const [email, setEmail]   = useState("");
   const [obm, setObm]       = useState(null);
   const [roles, setRoles]   = useState([]);
@@ -643,7 +655,12 @@ export default function App() {
         state:         f["State2"]         || f[F_STATE] || "",
         facts:         f["Facts & Hobbies"]|| f[F_FACTS] || "",
       });
-      setStage("profile");
+      // First-time user if no skills at all
+      const hasSkills = 
+        p.some(o => pIds.has(o.id)) ||
+        s.some(o => sIds.has(o.id)) ||
+        t.some(o => tIds.has(o.id));
+      setStage(hasSkills ? "profile" : "welcome");
     } catch(e) {
       console.error(e);
       setErr("Something went wrong: " + e.message);
@@ -721,6 +738,102 @@ export default function App() {
 
           {/* LOADING */}
           {stage === "loading" && <div style={{textAlign:"center",paddingTop:80}}><div className="spin" style={{width:40,height:40,borderWidth:3,margin:"0 auto 20px"}}></div><p style={{color:"#6B6B6B"}}>Loading your profile...</p></div>}
+
+          {/* WELCOME — first time, no skills yet */}
+          {stage === "welcome" && obm && (
+            <div>
+              {/* Personalized hero */}
+              <div className="welcome-hero">
+                <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20,position:"relative",zIndex:1}}>
+                  {profile.photoUrl
+                    ? <img src={profile.photoUrl} alt="" style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(255,255,255,.6)"}} />
+                    : <div style={{width:56,height:56,borderRadius:"50%",background:"rgba(255,255,255,.25)",border:"2px solid rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
+                        {(obm.fields["Full Name"]||obm.fields["Name"]||email).charAt(0).toUpperCase()}
+                      </div>
+                  }
+                  <div>
+                    <div style={{fontSize:13,color:"rgba(255,255,255,.75)",marginBottom:2}}>Welcome to Prowess</div>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:20,color:"#fff"}}>
+                      {obm.fields["Full Name"]||obm.fields["Name"]||email.split("@")[0]}
+                    </div>
+                  </div>
+                </div>
+                <div className="welcome-title">Let's build your profile.</div>
+                <div className="welcome-sub">
+                  Your profile is how Prowess matches you to the right client opportunities. It takes about 2 minutes — and the best part is Claude does most of the work.
+                </div>
+              </div>
+
+              {/* What we already know */}
+              {(profile.discPrimary || profile.city) && (
+                <div className="welcome-card" style={{marginBottom:16}}>
+                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:14}}>
+                    What we already know about you
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {(profile.city || profile.state) && (
+                      <span style={{background:"#F1F2F2",border:"1px solid #E0E1E1",color:"#4A4A4A",padding:"5px 12px",borderRadius:20,fontSize:13}}>
+                        📍 {[profile.city,profile.state].filter(Boolean).join(", ")}
+                      </span>
+                    )}
+                    {profile.discPrimary && (
+                      <span style={{background:"#E8F4F3",border:"1px solid rgba(127,191,184,.4)",color:"#1F5C58",padding:"5px 12px",borderRadius:20,fontSize:13,fontWeight:600}}>
+                        DISC: {profile.discPrimary}{profile.discSecondary?` / ${profile.discSecondary}`:""}
+                      </span>
+                    )}
+                    {profile.vark && (
+                      <span style={{background:"#F1F2F2",border:"1px solid #C8C9CA",color:"#4A4A4A",padding:"5px 12px",borderRadius:20,fontSize:13,fontWeight:600}}>
+                        VARK: {profile.vark}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Steps */}
+              <div className="welcome-card" style={{marginBottom:24}}>
+                <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#6B6B6B",marginBottom:8}}>
+                  Here's how it works
+                </div>
+                {[
+                  ["1","Upload your resume","Claude reads it and maps your experience to our skill taxonomy automatically."],
+                  ["2","Confirm your skills","Review what Claude found, add anything missing, answer a few quick yes/no questions."],
+                  ["3","You're matched","Prowess uses your profile to match you to the right client opportunities."],
+                ].map(([num,title,desc]) => (
+                  <div key={num} className="step-row">
+                    <div className="step-num">{num}</div>
+                    <div className="step-body">
+                      <div className="step-title">{title}</div>
+                      <div className="step-desc">{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA buttons */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                <button className="btn btn-p" style={{fontSize:13}} onClick={() => {
+                  setEditing(true);
+                  setEMode("resume");
+                  setStage("profile");
+                }}>
+                  📄 Upload My Resume
+                </button>
+                <button className="btn btn-g" style={{fontSize:13}} onClick={() => {
+                  setEditing(true);
+                  setEMode("manual");
+                  setStage("profile");
+                }}>
+                  ✏️ Add Skills Manually
+                </button>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <button onClick={() => setStage("profile")} style={{background:"none",border:"none",color:"#A0A0A0",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>
+                  Skip for now — I'll do this later
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* PROFILE */}
           {stage === "profile" && obm && <div style={{paddingBottom: ed ? 80 : 0}}>
