@@ -620,17 +620,19 @@ export default function App() {
       console.log("Secondary IDs:", [...sIds], "| Options:", s.length);
       console.log("Tech IDs:", [...tIds], "| Options:", t.length);
       const selName = v => v?.name || v || null;
+      // Airtable proxy returns fields by NAME not ID
+      // Use both field names and IDs as fallback
       setProfile({
         primarySkills:   p.filter(o => pIds.has(o.id)),
         secondarySkills: s.filter(o => sIds.has(o.id)),
         techSkills:      t.filter(o => tIds.has(o.id)),
-        hours: f[F_HOURS] || [],
-        rate:  f[F_RATE] != null ? String(f[F_RATE]) : "",
-        notes: f[F_NOTES] || "",
-        discPrimary:   selName(f[F_DISC_PRIMARY]),
-        discSecondary: selName(f[F_DISC_SECONDARY]),
-        vark:          selName(f[F_VARK]),
-        photoUrl:      f[F_PHOTO]?.[0]?.url || null,
+        hours: f[F_HOURS] || f["Availability Hours"] || [],
+        rate:  (f[F_RATE] ?? f["Rate"]) != null ? String(f[F_RATE] ?? f["Rate"]) : "",
+        notes: f[F_NOTES] || f["Notes"] || "",
+        discPrimary:   selName(f["Primary Disc Trait"]   || f[F_DISC_PRIMARY]),
+        discSecondary: selName(f["Secondary Disc Trait"] || f[F_DISC_SECONDARY]),
+        vark:          selName(f["Vark Style"]           || f[F_VARK]),
+        photoUrl:      (f["Profile pic"] || f[F_PHOTO])?.[0]?.url || null,
       });
       setStage("profile");
     } catch(e) {
