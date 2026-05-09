@@ -13,6 +13,10 @@ const TBL_TECH     = "tbliJ5Q4yU0m8EnsG";
 const TBL_INDUSTRY = "tbl2qU124blP8q1nv"; // Industry knowledge — linked from "Industry knowledge 2" on PM Profile
 const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
 
+// Cloudinary unsigned upload (avatars)
+const CLOUDINARY_CLOUD = "diwso2edi";
+const CLOUDINARY_PRESET = "prowess-obm-avatars";
+
 // Spotlight cards — grouped fields with helper text
 const SPOT_CARDS = [
   {
@@ -332,6 +336,44 @@ async function extractText(file) {
     }
   }
   return file.text();
+}
+
+// ── Cloudinary upload widget (dynamic load) ──────────────────────
+async function loadCloudinaryWidget() {
+  if (window.cloudinary) return;
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://upload-widget.cloudinary.com/global/all.js";
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+function openCloudinaryAvatarWidget(onSuccess, onError) {
+  return window.cloudinary.openUploadWidget({
+    cloudName: CLOUDINARY_CLOUD,
+    uploadPreset: CLOUDINARY_PRESET,
+    sources: ["local", "camera", "url"],
+    cropping: true,
+    croppingAspectRatio: 1,
+    croppingShowDimensions: true,
+    showSkipCropButton: false,
+    multiple: false,
+    maxFiles: 1,
+    clientAllowedFormats: ["png", "jpg", "jpeg", "webp"],
+    maxImageFileSize: 5_000_000,
+    styles: {
+      palette: {
+        window: "#FFFFFF", windowBorder: "#E0E1E1", tabIcon: "#7FBFB8",
+        menuIcons: "#5EA8A1", link: "#5EA8A1", action: "#7FBFB8",
+        inactiveTabIcon: "#A0A0A0", error: "#F15D60",
+        inProgress: "#7FBFB8", complete: "#7FBFB8", sourceBg: "#FAFFFE",
+      },
+    },
+  }, (err, result) => {
+    if (err) { onError?.(err); return; }
+    if (result?.event === "success") onSuccess(result.info.secure_url);
+  });
 }
 
 // ── Skill categories ─────────────────────────────────────────────
@@ -830,6 +872,36 @@ export default function App() {
   const [spotlightSaving, setSpotlightSaving] = useState(false);
   const [spotlightSaved, setSpotlightSaved] = useState(false);
   const [spotlightDraft, setSpotlightDraft] = useState({});
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  async function uploadPhoto() {
+    if (!obm) return;
+    setErr("");
+    try {
+      await loadCloudinaryWidget();
+    } catch (e) {
+      setErr("Couldn't load the upload widget — check your connection.");
+      return;
+    }
+    openCloudinaryAvatarWidget(
+      async (secureUrl) => {
+        setPhotoUploading(true);
+        // Optimistic local update
+        setProfile(p => ({...p, photoUrl: secureUrl}));
+        try {
+          await atFetch(`/${TBL_PM}/${obm.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ fields: { "Profile pic": [{ url: secureUrl }] } }),
+          });
+        } catch (e) {
+          setErr("Photo saved to Cloudinary but Airtable update failed: " + e.message);
+        } finally {
+          setPhotoUploading(false);
+        }
+      },
+      (e) => { console.error("Cloudinary error:", e); setErr("Photo upload failed."); }
+    );
+  }
 
   // Lazy-load spotlight when user clicks the tab
   useEffect(() => {
@@ -1281,15 +1353,24 @@ export default function App() {
 
               {/* Profile summary bar — avatar + DISC + VARK */}
               <div style={{display:"flex",alignItems:"center",gap:20,padding:"20px 24px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,marginBottom:24}}>
-                {/* Avatar */}
-                <div style={{flexShrink:0}}>
+                {/* Avatar — click to upload */}
+                <button
+                  type="button"
+                  onClick={uploadPhoto}
+                  disabled={photoUploading}
+                  title={profile.photoUrl ? "Change photo" : "Add a photo"}
+                  style={{flexShrink:0,position:"relative",background:"none",border:"none",padding:0,cursor:photoUploading?"wait":"pointer",borderRadius:"50%"}}
+                >
                   {profile.photoUrl
-                    ? <img src={profile.photoUrl} alt="" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8"}} />
+                    ? <img src={profile.photoUrl} alt="" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8",display:"block"}} />
                     : <div style={{width:64,height:64,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
                         {avatarInitial}
                       </div>
                   }
-                </div>
+                  <div style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:"50%",background:"#7FBFB8",border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
+                    {photoUploading ? <span className="spin" style={{width:10,height:10,borderWidth:2}}></span> : "📷"}
+                  </div>
+                </button>
                 {/* Info */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A",marginBottom:4}}>
