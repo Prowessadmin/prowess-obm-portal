@@ -5,7 +5,7 @@ exports.handler = async (event) => {
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Content-Type": "application/json",
   };
 
@@ -14,59 +14,57 @@ exports.handler = async (event) => {
   }
 
   const key = process.env.AIRTABLE_KEY;
+  console.log("Key preview:", key ? `${key.slice(0,6)}...${key.slice(-4)}` : "MISSING", "| Length:", key ? key.length : 0);
 
   if (!key) {
-    console.log("ERROR: AIRTABLE_KEY not set");
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "Airtable key not configured" }),
-    };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "AIRTABLE_KEY not configured" }) };
   }
 
-  console.log("Key preview:", key.slice(0, 6) + "..." + key.slice(-4), "| Length:", key.length);
-
   try {
-    const params = event.queryStringParameters || {};
-    const path = params.path || "";
+    let airtableMethod, airtablePath, airtableBody, queryParams;
 
-    // Build query string from remaining params (exclude 'path')
-    const remainingParams = { ...params };
-    delete remainingParams.path;
-    const queryString = new URLSearchParams(remainingParams).toString();
+    if (event.httpMethod === "GET") {
+      // GET: path and query params come from query string
+      const params = event.queryStringParameters || {};
+      airtablePath = params.path || "";
+      airtableMethod = "GET";
+      const remaining = { ...params };
+      delete remaining.path;
+      queryParams = new URLSearchParams(remaining).toString();
+    } else {
+      // POST: everything comes from JSON body
+      // { method: "PATCH"|"POST"|"GET", path: "/TABLE/RECORD", body: {...}, query: "..." }
+      const parsed = JSON.parse(event.body || "{}");
+      airtableMethod = parsed.method || "POST";
+      airtablePath = parsed.path || "";
+      airtableBody = parsed.body ? JSON.stringify(parsed.body) : undefined;
+      queryParams = parsed.query || "";
+    }
 
-    const url = `${AIRTABLE_URL}${path}${queryString ? "?" + queryString : ""}`;
-    console.log("Calling:", url);
-    console.log("Method:", event.httpMethod);
+    const url = `${AIRTABLE_URL}${airtablePath}${queryParams ? "?" + queryParams : ""}`;
+    console.log("→", airtableMethod, url);
 
-    const fetchOptions = {
-      method: event.httpMethod === "GET" ? "GET" : event.httpMethod,
+    const fetchOpts = {
+      method: airtableMethod,
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
     };
-
-    // Only add body for non-GET requests
-    if (event.body && event.httpMethod !== "GET") {
-      fetchOptions.body = event.body;
+    if (airtableBody && airtableMethod !== "GET") {
+      fetchOpts.body = airtableBody;
     }
 
-    const res = await fetch(url, fetchOptions);
+    const res = await fetch(url, fetchOpts);
     const text = await res.text();
+    console.log("Status:", res.status, "| Preview:", text.slice(0, 200));
 
     let data;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
-    console.log("Status:", res.status, "| Response preview:", text.slice(0, 200));
-
     return { statusCode: res.status, headers, body: JSON.stringify(data) };
   } catch (err) {
     console.log("ERROR:", err.message);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: err.message }),
-    };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
