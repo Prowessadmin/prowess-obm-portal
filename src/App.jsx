@@ -1505,7 +1505,7 @@ export default function App() {
                                   "The more you share, the better Prowess can match you.";
               return (
                 <div style={{paddingBottom: spotlightEditing ? 80 : 0}}>
-                  <div className="info" style={{marginBottom:20}}>
+                  <div className="info" style={{marginBottom:20,fontSize:15,lineHeight:1.6}}>
                     Your Spotlight profile is how Prowess introduces you to clients. Be specific, be real, and be you — clients choose OBMs they connect with, not just ones with the right skills.
                   </div>
 
@@ -1539,17 +1539,17 @@ export default function App() {
                   {spotlightLoaded && !spotlightEditing && spotlight && (
                     <div>
                       {/* Completion bar */}
-                      <div style={{background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,padding:"16px 20px",marginBottom:20}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                          <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:13,color:"#1A1A1A"}}>
+                      <div style={{background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,padding:"18px 22px",marginBottom:20}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                          <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:15,color:"#1A1A1A"}}>
                             Your spotlight is {pct}% complete
                           </span>
-                          <span style={{fontSize:12,color:"#6B6B6B"}}>{filled} of {SPOT_FIELDS.length} fields</span>
+                          <span style={{fontSize:14,color:"#6B6B6B"}}>{filled} of {SPOT_FIELDS.length} fields</span>
                         </div>
-                        <div style={{height:6,background:"#F1F2F2",borderRadius:999,overflow:"hidden",marginBottom:10}}>
+                        <div style={{height:8,background:"#F1F2F2",borderRadius:999,overflow:"hidden",marginBottom:12}}>
                           <div style={{height:"100%",width:`${pct}%`,background:tierColor,borderRadius:999,transition:"width .3s ease-out"}} />
                         </div>
-                        <div style={{fontSize:13,color:"#6B6B6B",lineHeight:1.5}}>{tierMessage}</div>
+                        <div style={{fontSize:14,color:"#6B6B6B",lineHeight:1.55}}>{tierMessage}</div>
                       </div>
 
                       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:12,gap:12}}>
@@ -1564,18 +1564,18 @@ export default function App() {
 
                       {SPOT_CARDS.map(card => (
                         <div key={card.title} className="card">
-                          <div className="ch"><span className="ct">{card.title}</span></div>
-                          <div style={{display:"grid",gap:14}}>
+                          <div className="ch"><span className="ct" style={{fontSize:13}}>{card.title}</span></div>
+                          <div style={{display:"grid",gap:16}}>
                             {card.fields.map(fld => {
                               const val = spotFields[fld.key];
                               return (
                                 <div key={fld.key}>
                                   {card.fields.length > 1 && (
-                                    <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:".08em",color:"#A0A0A0",marginBottom:4,fontFamily:"Raleway,sans-serif",fontWeight:600}}>{fld.label}</div>
+                                    <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:".08em",color:"#A0A0A0",marginBottom:5,fontFamily:"Raleway,sans-serif",fontWeight:600}}>{fld.label}</div>
                                   )}
                                   {val && String(val).trim()
-                                    ? <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{val}</div>
-                                    : <div style={{fontSize:14,color:"#A0A0A0",fontStyle:"italic"}}>Not added yet</div>
+                                    ? <div style={{fontSize:16,color:"#1A1A1A",lineHeight:1.65,whiteSpace:"pre-wrap"}}>{val}</div>
+                                    : <div style={{fontSize:15,color:"#A0A0A0",fontStyle:"italic"}}>Not added yet</div>
                                   }
                                 </div>
                               );
@@ -1590,16 +1590,16 @@ export default function App() {
                     <div>
                       {SPOT_CARDS.map(card => (
                         <div key={card.title} className="card ed">
-                          <div className="ch"><span className="ct on">{card.title}</span></div>
-                          <div style={{display:"grid",gap:18}}>
+                          <div className="ch"><span className="ct on" style={{fontSize:13}}>{card.title}</span></div>
+                          <div style={{display:"grid",gap:22}}>
                             {card.fields.map(fld => (
                               <div key={fld.key}>
-                                {card.fields.length > 1 && <label className="fl">{fld.label}</label>}
+                                {card.fields.length > 1 && <label className="fl" style={{fontSize:13}}>{fld.label}</label>}
+                                {fld.helper && <div style={{fontSize:14,color:"#6B6B6B",marginBottom:10,lineHeight:1.55}}>{fld.helper}</div>}
                                 {fld.multiline
-                                  ? <textarea className="fi" value={spotlightDraft[fld.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [fld.key]: e.target.value}))} style={{minHeight:80,resize:"vertical",lineHeight:1.6}} />
-                                  : <input className="fi" value={spotlightDraft[fld.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [fld.key]: e.target.value}))} />
+                                  ? <textarea className="fi" value={spotlightDraft[fld.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [fld.key]: e.target.value}))} style={{minHeight:100,resize:"vertical",lineHeight:1.6,fontSize:16}} />
+                                  : <input className="fi" value={spotlightDraft[fld.key] || ""} onChange={e => setSpotlightDraft(d => ({...d, [fld.key]: e.target.value}))} style={{fontSize:16}} />
                                 }
-                                {fld.helper && <div style={{fontSize:12,color:"#6B6B6B",marginTop:6,lineHeight:1.5}}>{fld.helper}</div>}
                               </div>
                             ))}
                           </div>
