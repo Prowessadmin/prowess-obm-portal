@@ -635,14 +635,23 @@ export default function App() {
         getSkills(TBL_PRIMARY, "Skill Name"),
         getSkills(TBL_SECONDARY, "Label"),
         getSkills(TBL_TECH, "Tech name"),
-        // Load industry options by fetching records with data and collecting unique values
-        atFetch(`/${TBL_PM}?fields%5B%5D=${F_INDUSTRY}&maxRecords=200`).then(d => {
-          const seen = new Map();
+        // Load industry options — scan records to get all values used
+        atFetch(`/${TBL_PM}?fields%5B%5D=${F_INDUSTRY}&maxRecords=2000`).then(d => {
+          // Start with known base options
+          const KNOWN = [
+            "Accounting/CAS/Tax/CFO","Agriculture","Construction","E-commerce",
+            "Education","Finance/Banking","Government/Public Sector","Healthcare",
+            "Hospitality/Food & Beverage","Insurance","Legal","Manufacturing",
+            "Marketing","Media/Entertainment","Non-Profit","Real Estate",
+            "Retail","Services/Consulting","Technology Hardware",
+            "Technology Software","Transportation/Logistics"
+          ];
+          const seen = new Map(KNOWN.map(n => [n, n]));
           (d.records || []).forEach(r => {
-            const vals = r.fields["Industry List"] || r.fields[F_INDUSTRY] || [];
-            vals.forEach(v => { const name = v?.name || v; if (name && !seen.has(name)) seen.set(name, v?.id || name); });
+            const vals = r.fields["Industry List"] || [];
+            vals.forEach(v => { const name = v?.name || v; if (name) seen.set(name, name); });
           });
-          return [...seen.entries()].map(([name, id]) => ({ id, name })).sort((a,b) => a.name.localeCompare(b.name));
+          return [...seen.keys()].sort().map(name => ({ id: name, name }));
         }),
         findByEmail(email.toLowerCase().trim()),
       ]);
