@@ -111,22 +111,41 @@ async function claudeParseResume(resumeText, primarySkills, secondarySkills, tec
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: `You are a resume parser for Prowess Project. Extract skills from resumes and match them to provided taxonomies.
-Return ONLY valid JSON. No markdown, no explanation.
-Format: {"primarySkills": ["skill1"], "secondarySkills": ["skill2"], "techSkills": ["tool1"], "rate": "suggested rate if mentioned"}`,
+      max_tokens: 1500,
+      system: `You are a resume skills extractor for Prowess Project OBM matching system.
+Your job is to read a resume and identify which skills from our taxonomy this person has demonstrated.
+Return ONLY valid JSON. No markdown, no explanation, no preamble.
+Format: {"primarySkills": ["exact skill name from taxonomy"], "secondarySkills": ["exact skill name from taxonomy"], "techSkills": ["exact tool name from taxonomy"], "rate": "hourly rate if mentioned or empty string"}`,
       messages: [{
         role: "user",
-        content: `Parse this resume and match skills to these exact taxonomies.
-PRIMARY SKILLS TAXONOMY: ${primarySkills.map(s => s.name).join(", ")}
-SECONDARY SKILLS TAXONOMY: ${secondarySkills.map(s => s.name).join(", ")}
-TECH SKILLS TAXONOMY: ${techSkills.map(s => s.name).join(", ")}
-Rules:
-- Only return skills that exist in the taxonomy or are clearly equivalent
-- For tech: skip proprietary, niche, legacy, or rarely-used software
-- Match common equivalents (e.g. "G Suite" = "Google Workspace")
-- Be generous — if there is any reasonable match, include it
-RESUME TEXT:
+        content: `Read this resume carefully and identify ALL skills this person has demonstrated that match our taxonomy.
+
+IMPORTANT RULES:
+- Infer skills from job descriptions, responsibilities, and accomplishments — not just explicit skill lists
+- Someone who "managed a team" has "Resource Management" and "Team communications"
+- Someone who "oversaw budgets" has "Budgeting" and possibly "Financial reporting/modeling"
+- Someone who "managed projects" has "Project Management"
+- Someone who "improved processes" has "Process Improvement"
+- Someone who "developed strategy" has "Strategic planning"
+- Someone who "handled recruiting" has "Recruiting" and "Talent acquisition"
+- Someone who "ran social media" has "Social media" and "Content creation"
+- Someone who "managed clients" has "Account management" and "Customer Success"
+- Someone who "used QuickBooks" or any accounting software has that tool listed
+- Be VERY GENEROUS — include a skill if there is any reasonable evidence they have done it
+- Return exact skill names as they appear in the taxonomy — copy them exactly including capitalization and spaces
+- A skill CAN appear in both primary and secondary lists
+- For tech: include every tool mentioned anywhere in the resume
+
+PRIMARY SKILLS TAXONOMY — copy names exactly as shown:
+${primarySkills.map(s => s.name).join(" | ")}
+
+SECONDARY SKILLS TAXONOMY — copy names exactly as shown:
+${secondarySkills.map(s => s.name).join(" | ")}
+
+TECH SKILLS TAXONOMY — copy names exactly as shown:
+${techSkills.map(s => s.name).join(" | ")}
+
+RESUME:
 ${resumeText.slice(0, 8000)}`
       }]
     })
