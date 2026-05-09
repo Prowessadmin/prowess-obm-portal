@@ -133,6 +133,28 @@ ${resumeText.slice(0, 8000)}`
   const text = data.content?.[0]?.text || "{}";
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+    const matchSkill = (name, options) => 
+      options.find(o => o.name.trim().toLowerCase() === name.trim().toLowerCase());
+    return {
+      primarySkills: (parsed.primarySkills || [])
+        .map(name => matchSkill(name, primarySkills))
+        .filter(Boolean),
+      secondarySkills: (parsed.secondarySkills || [])
+        .map(name => matchSkill(name, secondarySkills))
+        .filter(Boolean),
+      techSkills: (parsed.techSkills || [])
+        .map(name => matchSkill(name, techSkills))
+        .filter(Boolean),
+      rate: parsed.rate || "",
+    };
+  } catch {
+    return { primarySkills: [], secondarySkills: [], techSkills: [], rate: "" };
+  }
+}
+  const data = await res.json();
+  const text = data.content?.[0]?.text || "{}";
+  try {
+    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
     
     // Map skill names back to option objects with IDs
     const matchSkill = (name, options) => 
