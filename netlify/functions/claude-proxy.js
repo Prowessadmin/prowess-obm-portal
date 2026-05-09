@@ -15,6 +15,8 @@ exports.handler = async (event) => {
   }
   try {
     const requestBody = JSON.parse(event.body);
+    console.log("Claude proxy called — model:", requestBody.model);
+    
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -24,7 +26,11 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify(requestBody),
     });
+    
     const data = await response.json();
+    console.log("Claude response status:", response.status);
+    console.log("Claude response:", JSON.stringify(data).slice(0, 500));
+    
     return {
       statusCode: response.ok ? 200 : response.status,
       headers: {
@@ -34,6 +40,7 @@ exports.handler = async (event) => {
       body: JSON.stringify(data),
     };
   } catch (error) {
+    console.log("Claude proxy error:", error.message);
     return {
       statusCode: 500,
       headers: { 'Access-Control-Allow-Origin': '*' },
