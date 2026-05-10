@@ -45,7 +45,7 @@ const VARK_OPTIONS = ["Visual", "Auditory", "Read/Write", "Kinesthetic", "Multim
 // Achievement badges
 const BADGES = [
   { id: "headshot",  emoji: "📸", name: "Looking Sharp",    desc: "Upload a profile photo" },
-  { id: "pioneer",   emoji: "🌱", name: "Profile Pioneer",  desc: "Set city, rate, and pick at least 3 primary skills" },
+  { id: "pioneer",   emoji: "🦬", name: "Profile Pioneer",  desc: "Set city, rate, and pick at least 3 primary skills" },
   { id: "industry",  emoji: "🏢", name: "Industry Insider", desc: "Add 3 or more industries" },
   { id: "tech",      emoji: "🛠️", name: "Tech Stack Pro",   desc: "Add 5 or more tech skills" },
   { id: "story",     emoji: "📖", name: "Storyteller",      desc: "Fill in Who You Are and Greatest Achievement on your Spotlight" },
@@ -1841,7 +1841,7 @@ export default function App() {
                         {showBadgeInfo ? "Hide details" : "About these badges"}
                       </button>
                     </div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:10,paddingTop:4,paddingBottom:4}}>
                       {BADGES.map(b => {
                         const on = earned.has(b.id);
                         const active = selectedBadgeId === b.id;
@@ -1849,20 +1849,26 @@ export default function App() {
                           <button
                             key={b.id}
                             type="button"
-                            title={b.desc}
+                            title={`${b.name} — ${b.desc}`}
+                            aria-label={`${b.name}: ${on ? "earned" : "locked"}. ${b.desc}`}
                             onClick={() => setSelectedBadgeId(active ? null : b.id)}
                             style={{
-                              display:"inline-flex",alignItems:"center",gap:6,
-                              padding:"4px 10px 4px 6px",borderRadius:20,
-                              background: on ? "#E8F4F3" : "#F8F8F8",
-                              border: `1px solid ${active ? "#5EA8A1" : (on ? "rgba(127,191,184,.5)" : "#E0E1E1")}`,
-                              boxShadow: active ? "0 0 0 2px rgba(127,191,184,.25)" : "none",
-                              opacity: on ? 1 : 0.7,
-                              cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
+                              width:48,height:48,borderRadius:"50%",
+                              display:"inline-flex",alignItems:"center",justifyContent:"center",
+                              padding:0,
+                              background: on ? "linear-gradient(135deg,#FFE9B0,#F59E0B)" : "#F1F2F2",
+                              border: `2px solid ${active ? "#5EA8A1" : (on ? "#D97706" : "#E0E1E1")}`,
+                              boxShadow: active
+                                ? "0 0 0 3px rgba(127,191,184,.3)"
+                                : on ? "0 2px 6px rgba(245,158,11,.25)" : "none",
+                              opacity: on ? 1 : 0.55,
+                              filter: on ? "none" : "grayscale(70%)",
+                              cursor:"pointer",fontFamily:"inherit",transition:"transform .15s, box-shadow .15s",
+                              fontSize:22,lineHeight:1,
+                              transform: active ? "scale(1.06)" : "scale(1)",
                             }}
                           >
-                            <span style={{fontSize:14,filter: on ? "none" : "grayscale(80%)",lineHeight:1}}>{b.emoji}</span>
-                            <span style={{fontSize:11,fontWeight:600,fontFamily:"Raleway,sans-serif",color: on ? "#1F5C58" : "#6B6B6B"}}>{b.name}</span>
+                            {b.emoji}
                           </button>
                         );
                       })}
