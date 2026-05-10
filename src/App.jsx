@@ -1886,11 +1886,11 @@ export default function App() {
                               width:48,height:48,borderRadius:"50%",
                               display:"inline-flex",alignItems:"center",justifyContent:"center",
                               padding:0,
-                              background: on ? "linear-gradient(135deg,#FFF1F5,#FBCFE0)" : "#F1F2F2",
-                              border: `2px solid ${active ? "#5EA8A1" : (on ? "#F4A6BE" : "#E0E1E1")}`,
+                              background: on ? "#F2E9EB" : "#F1F2F2",
+                              border: `2px solid ${active ? "#5EA8A1" : (on ? "#F15D60" : "#E0E1E1")}`,
                               boxShadow: active
                                 ? "0 0 0 3px rgba(127,191,184,.3)"
-                                : on ? "0 2px 6px rgba(244,166,190,.35)" : "none",
+                                : on ? "0 2px 6px rgba(241,93,96,.25)" : "none",
                               opacity: on ? 1 : 0.55,
                               filter: on ? "none" : "grayscale(70%)",
                               cursor:"pointer",fontFamily:"inherit",transition:"transform .15s, box-shadow .15s",
