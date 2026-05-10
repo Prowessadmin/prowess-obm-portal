@@ -21,6 +21,61 @@ const CLOUDINARY_PRESET = "prowess_obm_avatars";
 const DISC_OPTIONS = ["Dominant", "Inspirational", "Steadiness", "Conscientious", "Level"];
 const VARK_OPTIONS = ["Visual", "Auditory", "Read/Write", "Kinesthetic", "Multimodal"];
 
+// Achievement badges
+const BADGES = [
+  { id: "headshot",  emoji: "📸", name: "Looking Sharp",    desc: "Upload a profile photo" },
+  { id: "pioneer",   emoji: "🌱", name: "Profile Pioneer",  desc: "Set city, rate, and pick at least 3 primary skills" },
+  { id: "industry",  emoji: "🏢", name: "Industry Insider", desc: "Add 3 or more industries" },
+  { id: "tech",      emoji: "🛠️", name: "Tech Stack Pro",   desc: "Add 5 or more tech skills" },
+  { id: "story",     emoji: "📖", name: "Storyteller",      desc: "Fill in Who You Are and Greatest Achievement on your Spotlight" },
+  { id: "spotlight", emoji: "✨", name: "Spotlight Star",   desc: "Complete every Spotlight field" },
+];
+
+function spotlightAllFilled(spotlight) {
+  if (!spotlight?.fields) return false;
+  return SPOT_FIELDS.every(f => {
+    const v = spotlight.fields[f.key];
+    return v && String(v).trim();
+  });
+}
+
+function earnedBadgeIds(profile, spotlight) {
+  const sf = spotlight?.fields || {};
+  return new Set([
+    profile.photoUrl ? "headshot" : null,
+    (profile.city && profile.rate && profile.primarySkills.length >= 3) ? "pioneer" : null,
+    profile.industries.length >= 3 ? "industry" : null,
+    profile.techSkills.length >= 5 ? "tech" : null,
+    (sf["Who you are"]?.trim() && sf["Greatest personal achievement"]?.trim()) ? "story" : null,
+    spotlightAllFilled(spotlight) ? "spotlight" : null,
+  ].filter(Boolean));
+}
+
+function computeProfileStrength(profile, spotlight) {
+  const checks = [
+    { id: "photo",         done: !!profile.photoUrl,                                                 action: "Add a profile photo",                              section: "photo" },
+    { id: "name",          done: !!(profile.firstName && profile.lastName),                          action: "Add your first and last name",                     section: "info" },
+    { id: "location",      done: !!(profile.city && profile.state),                                  action: "Set your city and state",                          section: "info" },
+    { id: "rate",          done: !!profile.rate,                                                     action: "Set your hourly rate",                             section: "info" },
+    { id: "disc_vark",     done: !!(profile.discPrimary && profile.vark),                            action: "Add your DISC and VARK assessments",               section: "info" },
+    { id: "primarySkills", done: profile.primarySkills.length   >= 3,                                action: "Pick at least 3 primary skills",                   section: "skills" },
+    { id: "secondarySkills", done: profile.secondarySkills.length >= 3,                              action: "Pick at least 3 secondary skills",                 section: "skills" },
+    { id: "techSkills",    done: profile.techSkills.length      >= 3,                                action: "Pick at least 3 tech skills",                      section: "skills" },
+    { id: "industries",    done: profile.industries.length      >= 2,                                action: "Add 2 or more industries",                         section: "skills" },
+    { id: "facts",         done: !!profile.facts,                                                    action: "Share a little about yourself in Facts & Hobbies", section: "info" },
+    { id: "spotlight",     done: spotlightAllFilled(spotlight),                                      action: "Finish your Spotlight ✨",                          section: "spotlight" },
+  ];
+  const earned = checks.filter(c => c.done).length;
+  const pct = Math.round((earned / checks.length) * 100);
+  const tier =
+    pct >= 86 ? { label: "All-Star",  color: "#F59E0B", message: "Your profile is fully built. You'll show up first when clients search." } :
+    pct >= 61 ? { label: "Excellent", color: "#7FBFB8", message: "Strong profile. Polish a few more details to reach All-Star." } :
+    pct >= 31 ? { label: "Strong",    color: "#5EA8A1", message: "You're well underway — a few more details will help you stand out." } :
+                { label: "Beginner",  color: "#A0A0A0", message: "Just getting started — let's add the basics so Prowess can match you." };
+  const nextSteps = checks.filter(c => !c.done).slice(0, 3);
+  return { pct, tier, checks, nextSteps };
+}
+
 // Spotlight cards — grouped fields with helper text
 const SPOT_CARDS = [
   {
@@ -875,6 +930,7 @@ export default function App() {
   const [spotlightSaved, setSpotlightSaved] = useState(false);
   const [spotlightDraft, setSpotlightDraft] = useState({});
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [newRolesCount, setNewRolesCount] = useState(0);
 
   async function uploadPhoto() {
     if (!obm) return;
@@ -966,8 +1022,20 @@ export default function App() {
       setPOpts(p); setSOpts(s); setTOpts(t); setIndOpts(indRec);
       if (!rec) { setErr("No profile found for that email. Contact Prowess support."); setStage("email"); return; }
       setObm(rec);
-      const m = await getMatches(rec.id);
+      const [m, spot] = await Promise.all([
+        getMatches(rec.id),
+        getSpotlight(email.toLowerCase().trim()).catch(() => null),
+      ]);
       setRoles(m);
+      setSpotlight(spot);
+      setSpotlightLoaded(true);
+      // "New since last visit" tracking via localStorage
+      const lastVisitKey = `prowess-last-visit-${email.toLowerCase().trim()}`;
+      const lastVisitISO = localStorage.getItem(lastVisitKey);
+      const lastVisit = lastVisitISO ? new Date(lastVisitISO) : null;
+      const newCount = lastVisit ? m.filter(r => r.createdTime && new Date(r.createdTime) > lastVisit).length : 0;
+      setNewRolesCount(newCount);
+      localStorage.setItem(lastVisitKey, new Date().toISOString());
       const f = rec.fields;
       const pIds = new Set(f[F_PRIMARY]   || []);
       const sIds = new Set(f[F_SECONDARY] || []);
@@ -1289,15 +1357,33 @@ export default function App() {
           {/* PROFILE */}
           {stage === "profile" && obm && <div style={{paddingBottom: ed ? 80 : 0}}>
             <div className="ph">
-              <h1 className="pg">
-                {(() => {
-                  const h = new Date().getHours();
-                  const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
-                  const first = (profile.firstName || displayName || "").trim().split(" ")[0];
-                  return first ? `Good ${tod}, ${first} 👋` : `Welcome back 👋`;
-                })()}
-              </h1>
-              <p className="pe">{email}</p>
+              {(() => {
+                const h = new Date().getHours();
+                const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+                const first = (profile.firstName || displayName || "").trim().split(" ")[0];
+                const greeting = first ? `Good ${tod}, ${first} 👋` : `Welcome back 👋`;
+                const s = computeProfileStrength(profile, spotlight);
+                const newRolesLine = newRolesCount > 0
+                  ? `${newRolesCount} new role match${newRolesCount === 1 ? "" : "es"} since your last visit.`
+                  : null;
+                const tierLine = (() => {
+                  if (s.pct >= 86) return "Your profile is at All-Star — you're set.";
+                  const next = s.nextSteps[0];
+                  return next
+                    ? `Profile is ${s.tier.label} (${s.pct}%) — next: ${next.action.charAt(0).toLowerCase() + next.action.slice(1)}.`
+                    : `Profile is ${s.tier.label} (${s.pct}%).`;
+                })();
+                return (
+                  <>
+                    <h1 className="pg">{greeting}</h1>
+                    <p className="pe" style={{marginTop:6,fontSize:14,color:"#4A4A4A"}}>
+                      {newRolesLine ? <><strong style={{color:"#5EA8A1"}}>{newRolesLine}</strong> </> : null}
+                      {tierLine}
+                    </p>
+                    <p className="pe" style={{marginTop:4}}>{email}</p>
+                  </>
+                );
+              })()}
             </div>
             {err && <div className="err">{err}</div>}
 
@@ -1433,51 +1519,151 @@ export default function App() {
 
             {tab === "profile" && <>
 
-              {/* Profile summary bar — avatar + DISC + VARK */}
-              <div style={{display:"flex",alignItems:"center",gap:20,padding:"20px 24px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,marginBottom:24}}>
-                {/* Avatar — click to upload */}
-                <button
-                  type="button"
-                  onClick={uploadPhoto}
-                  disabled={photoUploading}
-                  title={profile.photoUrl ? "Change photo" : "Add a photo"}
-                  style={{flexShrink:0,position:"relative",background:"none",border:"none",padding:0,cursor:photoUploading?"wait":"pointer",borderRadius:"50%"}}
-                >
-                  {profile.photoUrl
-                    ? <img src={profile.photoUrl} alt="" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8",display:"block"}} />
-                    : <div style={{width:64,height:64,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700}}>
-                        {avatarInitial}
+              {/* Profile Strength + Next Steps */}
+              {(() => {
+                const s = computeProfileStrength(profile, spotlight);
+                return (
+                  <div style={{background:"#fff",border:"1px solid #E0E1E1",borderRadius:10,padding:"22px 24px",marginBottom:20}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        <span style={{background:s.tier.color,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20}}>
+                          {s.tier.label}
+                        </span>
+                        <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A"}}>
+                          Profile Strength · {s.pct}%
+                        </span>
                       </div>
-                  }
-                  <div style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:"50%",background:"#7FBFB8",border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
-                    {photoUploading ? <span className="spin" style={{width:10,height:10,borderWidth:2}}></span> : "📷"}
+                      <span style={{fontSize:13,color:"#6B6B6B"}}>
+                        {s.checks.filter(c => c.done).length} of {s.checks.length} signals
+                      </span>
+                    </div>
+                    <div style={{height:8,background:"#F1F2F2",borderRadius:999,overflow:"hidden",marginBottom:12}}>
+                      <div style={{height:"100%",width:`${s.pct}%`,background:s.tier.color,borderRadius:999,transition:"width .3s ease-out"}} />
+                    </div>
+                    <div style={{fontSize:14,color:"#4A4A4A",lineHeight:1.55,marginBottom:s.nextSteps.length?16:0}}>{s.tier.message}</div>
+                    {s.nextSteps.length > 0 && (
+                      <div style={{borderTop:"1px solid #F1F2F2",paddingTop:14}}>
+                        <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:10}}>
+                          Next steps
+                        </div>
+                        <ul style={{margin:0,padding:0,listStyle:"none",display:"grid",gap:8}}>
+                          {s.nextSteps.map(step => (
+                            <li key={step.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (step.section === "photo")     { uploadPhoto(); return; }
+                                  if (step.section === "spotlight") { setTab("spotlight"); return; }
+                                  if (step.section === "info") {
+                                    setInfoDraft({
+                                      city: profile.city || "", state: profile.state || "", rate: profile.rate || "",
+                                      facts: profile.facts || "", discPrimary: profile.discPrimary || "",
+                                      discSecondary: profile.discSecondary || "", vark: profile.vark || "",
+                                    });
+                                    setInfoEditing(true);
+                                    window.scrollTo({ top: 0, behavior: "smooth" });
+                                    return;
+                                  }
+                                  // skills
+                                  setEditing(true); setEMode("manual");
+                                }}
+                                style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",background:"#F8FFFE",border:"1px solid rgba(127,191,184,.25)",borderRadius:8,padding:"10px 14px",cursor:"pointer",fontSize:14,color:"#1A1A1A",transition:"all .15s"}}
+                                onMouseOver={e => e.currentTarget.style.borderColor = "#7FBFB8"}
+                                onMouseOut={e => e.currentTarget.style.borderColor = "rgba(127,191,184,.25)"}
+                              >
+                                <span style={{color:"#7FBFB8",fontSize:16,lineHeight:1}}>○</span>
+                                <span style={{flex:1}}>{step.action}</span>
+                                <span style={{color:"#A0A0A0",fontSize:14}}>→</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                </button>
+                );
+              })()}
+
+              {/* Profile summary bar — avatar + name + badges */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:20,padding:"20px 24px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,marginBottom:24}}>
+                {/* Avatar column — click to upload, with prompt copy below */}
+                <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                  <button
+                    type="button"
+                    onClick={uploadPhoto}
+                    disabled={photoUploading}
+                    title={profile.photoUrl ? "Change photo" : "Add a photo"}
+                    style={{position:"relative",background:"none",border:"none",padding:0,cursor:photoUploading?"wait":"pointer",borderRadius:"50%"}}
+                  >
+                    {profile.photoUrl
+                      ? <img src={profile.photoUrl} alt="" style={{width:72,height:72,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8",display:"block"}} />
+                      : <div style={{width:72,height:72,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,border:"2px dashed rgba(255,255,255,.65)"}}>
+                          {avatarInitial}
+                        </div>
+                    }
+                    <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:"50%",background:"#7FBFB8",border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
+                      {photoUploading ? <span className="spin" style={{width:11,height:11,borderWidth:2}}></span> : "📷"}
+                    </div>
+                  </button>
+                  {!profile.photoUrl && (
+                    <button
+                      type="button"
+                      onClick={uploadPhoto}
+                      disabled={photoUploading}
+                      style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:"#5EA8A1",fontWeight:600,fontFamily:"Raleway,sans-serif",letterSpacing:".04em",textDecoration:"underline"}}
+                    >
+                      Add a headshot
+                    </button>
+                  )}
+                </div>
                 {/* Info */}
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A",marginBottom:4}}>
+                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:18,color:"#1A1A1A",marginBottom:4}}>
                     {displayName}
                   </div>
                   {(profile.city || profile.state) && (
-                    <div style={{fontSize:13,color:"#6B6B6B",marginBottom:6}}>
+                    <div style={{fontSize:13,color:"#6B6B6B",marginBottom:10}}>
                       📍 {[profile.city, profile.state].filter(Boolean).join(", ")}
                     </div>
                   )}
-                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                    {profile.discPrimary && (
-                      <span style={{background:"#E8F4F3",border:"1px solid rgba(127,191,184,.4)",color:"#1F5C58",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>
-                        DISC: {profile.discPrimary}{profile.discSecondary ? ` / ${profile.discSecondary}` : ""}
-                      </span>
-                    )}
-                    {profile.vark && (
-                      <span style={{background:"#F1F2F2",border:"1px solid #C8C9CA",color:"#4A4A4A",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>
-                        VARK: {profile.vark}
-                      </span>
-                    )}
-                    {!profile.discPrimary && !profile.vark && (
-                      <span style={{fontSize:12,color:"#A0A0A0",fontStyle:"italic"}}>Assessment data not yet available</span>
-                    )}
-                  </div>
+                  {!profile.photoUrl && (
+                    <div style={{fontSize:13,color:"#5EA8A1",lineHeight:1.5,marginBottom:10,fontStyle:"italic"}}>
+                      Tap your photo to add a headshot — clients connect faster with a face.
+                    </div>
+                  )}
+                  {/* Badges */}
+                  {(() => {
+                    const earned = earnedBadgeIds(profile, spotlight);
+                    return (
+                      <div>
+                        <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0",marginBottom:6}}>
+                          Achievements · {earned.size}/{BADGES.length}
+                        </div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                          {BADGES.map(b => {
+                            const on = earned.has(b.id);
+                            return (
+                              <span
+                                key={b.id}
+                                title={`${b.name}${on ? " — earned" : " — locked"}: ${b.desc}`}
+                                style={{
+                                  display:"inline-flex",alignItems:"center",justifyContent:"center",
+                                  width:30,height:30,borderRadius:"50%",
+                                  background: on ? "#E8F4F3" : "#F1F2F2",
+                                  border: `1px solid ${on ? "rgba(127,191,184,.5)" : "#E0E1E1"}`,
+                                  fontSize:15,opacity:on?1:0.4,cursor:"help",
+                                  filter: on ? "none" : "grayscale(80%)",
+                                  transition:"all .2s",
+                                }}
+                              >
+                                {b.emoji}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
