@@ -213,9 +213,8 @@ async function findByEmail(email) {
 }
 
 async function getMatches(pmId) {
-  // Pull both response-yes and awaiting-response rows server-side, then filter client-side by the
-  // PM Profile linked-field array. (Airtable's ARRAYJOIN on a linked field returns primary-field
-  // text not record IDs, so we can't filter by record ID in the formula.)
+  // Pull response-yes + awaiting-response rows server-side, then detect the linkage field
+  // (don't assume it's literally named "PM Profile" — scan all linked-array fields for our pmId).
   const formula = `OR(
     LOWER(TRIM({Application status})) = "response yes",
     LOWER(TRIM({Application status})) = "awaiting response"
@@ -223,32 +222,59 @@ async function getMatches(pmId) {
   const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc&maxRecords=200`);
   const all = d.records || [];
-  const linked = all.filter(r => {
-    const arr = r.fields["PM Profile"];
-    return Array.isArray(arr) && arr.includes(pmId);
-  });
+
+  const linkFieldName = (record) => {
+    for (const [k, v] of Object.entries(record.fields || {})) {
+      if (Array.isArray(v) && v.includes(pmId)) return k;
+    }
+    return null;
+  };
+  const isLinked = (r) => linkFieldName(r) !== null;
+
+  const linked = all.filter(isLinked);
   const statusOf = r => String(r.fields["Application status"] || "").trim().toLowerCase();
   const responseYes = linked.filter(r => statusOf(r) === "response yes");
   const awaiting    = linked.filter(r => statusOf(r) === "awaiting response");
 
-  let debugLinked = null;
+  let debugInfo = null;
   if (!responseYes.length && !awaiting.length) {
     try {
       const dbg = await atFetch(`/${TBL_MATCHING}?maxRecords=200&sort[0][field]=Created&sort[0][direction]=desc`);
-      debugLinked = (dbg.records || [])
-        .filter(r => Array.isArray(r.fields["PM Profile"]) && r.fields["PM Profile"].includes(pmId))
-        .map(r => ({
-          id: r.id,
-          applicationStatus: r.fields["Application status"] ?? null,
-          candidateSelection: r.fields["Candidate selection"] ?? null,
-          triggerEmail: r.fields["❇️ Trigger email to talent"] ?? null,
-          clientName: r.fields["Client Name"] ?? r.fields["Role Title"] ?? null,
-        }));
+      const recs = dbg.records || [];
+      const linkedAny = recs.filter(isLinked);
+      if (linkedAny.length) {
+        debugInfo = {
+          kind: "linkedButFiltered",
+          linkField: linkFieldName(linkedAny[0]),
+          rows: linkedAny.map(r => ({
+            id: r.id,
+            applicationStatus: r.fields["Application status"] ?? null,
+            candidateSelection: r.fields["Candidate selection"] ?? null,
+            triggerEmail: r.fields["❇️ Trigger email to talent"] ?? null,
+            clientName: r.fields["Client Name"] ?? r.fields["Role Title"] ?? null,
+          })),
+        };
+      } else {
+        debugInfo = {
+          kind: "notLinked",
+          pmId,
+          totalSampled: recs.length,
+          recentSample: recs.slice(0, 3).map(r => ({
+            id: r.id,
+            fields: Object.fromEntries(
+              Object.entries(r.fields || {}).map(([k, v]) => [
+                k,
+                Array.isArray(v) ? `Array(${v.length}): ${JSON.stringify(v).slice(0, 80)}` : String(v ?? "null").slice(0, 80),
+              ])
+            ),
+          })),
+        };
+      }
     } catch (e) {
-      console.warn("[Matches Debug] Could not fetch debug rows:", e);
+      console.warn("[Matches Debug] error:", e);
     }
   }
-  return { responseYes, awaiting, debugLinked };
+  return { responseYes, awaiting, debugInfo, pmId };
 }
 
 async function getSpotlight(email) {
@@ -961,7 +987,7 @@ export default function App() {
   const [spotlightDraft, setSpotlightDraft] = useState({});
   const [photoUploading, setPhotoUploading] = useState(false);
   const [newRolesCount, setNewRolesCount] = useState(0);
-  const [matchesDebug, setMatchesDebug] = useState(null);
+  const [matchesDebug, setMatchesDebug] = useState(null); // { kind, ... } from getMatches
   const [showBadgeInfo, setShowBadgeInfo] = useState(false);
 
   async function uploadPhoto() {
@@ -1062,7 +1088,7 @@ export default function App() {
       const m = matchResult.responseYes;
       setRoles(m);
       setAwaitingRoles(matchResult.awaiting);
-      setMatchesDebug(matchResult.debugLinked);
+      setMatchesDebug(matchResult.debugInfo);
       setSpotlight(spot);
       setSpotlightLoaded(true);
       // "New since last visit" tracking via localStorage
@@ -1998,16 +2024,16 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {!roles.length && matchesDebug && matchesDebug.length > 0 && (
+              {!roles.length && !awaitingRoles.length && matchesDebug?.kind === "linkedButFiltered" && matchesDebug.rows?.length > 0 && (
                 <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.4)",borderRadius:8,padding:"16px 20px",marginBottom:16,fontSize:13,lineHeight:1.55}}>
                   <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:6,color:"#8A5E1A"}}>
-                    Debug · {matchesDebug.length} Matching record{matchesDebug.length===1?"":"s"} linked to your profile, but none have Application status = "response yes"
+                    Debug · {matchesDebug.rows.length} Matching record{matchesDebug.rows.length===1?"":"s"} linked to your profile via field "{matchesDebug.linkField}", but none have status "response yes" or "awaiting response"
                   </strong>
                   <div style={{color:"#6B6B6B",marginBottom:10}}>
-                    Roles only show in My Roles after the OBM has responded yes. Below is what we found in the Matching table for diagnostic purposes — share this with the dev team if it looks wrong.
+                    Below is what we found in the Matching table — share this with the dev team if the statuses look wrong.
                   </div>
                   <ul style={{margin:0,padding:0,listStyle:"none",display:"grid",gap:6}}>
-                    {matchesDebug.map((r, i) => (
+                    {matchesDebug.rows.map((r, i) => (
                       <li key={r.id} style={{padding:"8px 12px",background:"rgba(255,255,255,.6)",border:"1px solid rgba(176,125,42,.2)",borderRadius:6,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:12,color:"#1A1A1A"}}>
                         <strong>{i+1}.</strong> {r.clientName || "(no client name)"} ·{" "}
                         Application status: <code>{JSON.stringify(r.applicationStatus)}</code> ·{" "}
@@ -2016,6 +2042,28 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+              {!roles.length && !awaitingRoles.length && matchesDebug?.kind === "notLinked" && (
+                <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.4)",borderRadius:8,padding:"16px 20px",marginBottom:16,fontSize:13,lineHeight:1.55}}>
+                  <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:6,color:"#8A5E1A"}}>
+                    Debug · No Matching records reference your PM Profile (id: <code>{matchesDebug.pmId}</code>) in any linked field
+                  </strong>
+                  <div style={{color:"#6B6B6B",marginBottom:10}}>
+                    We sampled the {matchesDebug.totalSampled} most recent Matching records and none of them include your record ID in any linked-record field. Either your profile genuinely hasn't been matched to any roles yet, or the field that links roles to OBMs is something we haven't checked. Share the field structure below with the dev team.
+                  </div>
+                  <div style={{display:"grid",gap:8,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:11,color:"#1A1A1A"}}>
+                    {matchesDebug.recentSample.map((r, i) => (
+                      <details key={r.id} style={{padding:"8px 12px",background:"rgba(255,255,255,.6)",border:"1px solid rgba(176,125,42,.2)",borderRadius:6}}>
+                        <summary style={{cursor:"pointer"}}>Record {i+1} ({r.id}) — {Object.keys(r.fields).length} fields</summary>
+                        <div style={{marginTop:8,display:"grid",gap:3}}>
+                          {Object.entries(r.fields).map(([k, v]) => (
+                            <div key={k}><strong>{k}:</strong> <span style={{color:"#5EA8A1"}}>{v}</span></div>
+                          ))}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
                 </div>
               )}
               {!roles.length
