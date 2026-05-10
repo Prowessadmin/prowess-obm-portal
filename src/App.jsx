@@ -2120,7 +2120,7 @@ export default function App() {
                     {awaitingRoles.map(r => {
                       const f = r.fields;
                       const jobUrl = f["Job board link"];
-                      const roleName = f["Organization Name"] || f["Name"] || f["Company"] || f["Client Name"] || f["Role Title"] || "";
+                      const roleName = f["Organization Name"] || f["Name"] || f["Company"] || f["Client Name"] || f["Role Title"] || "Ops Partner Role";
                       const applyUrl = buildApplyUrl({ roleName, email });
                       return (
                         <div key={r.id} style={{background:"#fff",border:"1px solid rgba(245,158,11,.35)",borderRadius:8,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
