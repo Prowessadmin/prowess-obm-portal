@@ -1951,8 +1951,8 @@ export default function App() {
               <button className={`tab ${tab==="roles"?"on":""}`} onClick={() => setTab("roles")}>
                 My Roles
                 {awaitingRoles.length > 0 && (
-                  <span title={`${awaitingRoles.length} role${awaitingRoles.length===1?"":"s"} awaiting your response`} style={{marginLeft:6,display:"inline-flex",alignItems:"center",gap:3,background:"#F59E0B",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,letterSpacing:".04em"}}>
-                    ⭐ {awaitingRoles.length}
+                  <span title={`${awaitingRoles.length} role${awaitingRoles.length===1?"":"s"} awaiting your response`} style={{marginLeft:6,display:"inline-flex",alignItems:"center",gap:4,background:"#F15D60",color:"#fff",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10,letterSpacing:".04em"}}>
+                    <span style={{fontSize:11,lineHeight:1}}>★</span> {awaitingRoles.length}
                   </span>
                 )}
                 {awaitingRoles.length === 0 && roles.length > 0 && ` (${roles.length})`}
@@ -2143,7 +2143,7 @@ export default function App() {
               {awaitingRoles.length > 0 && (
                 <div style={{background:"#FFF8EC",border:"1px solid rgba(245,158,11,.4)",borderRadius:10,padding:"18px 22px",marginBottom:24}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                    <span style={{fontSize:18}}>⭐</span>
+                    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:28,height:28,borderRadius:"50%",background:"#F15D60",color:"#fff",fontSize:14,lineHeight:1}}>★</span>
                     <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:14,color:"#8A5E1A",letterSpacing:".04em",textTransform:"uppercase"}}>
                       Awaiting your response · {awaitingRoles.length}
                     </span>
