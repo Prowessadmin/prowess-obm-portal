@@ -412,6 +412,32 @@ async function extractText(file) {
 }
 
 // ── Cloudinary upload widget (dynamic load) ──────────────────────
+// ── Confetti (lazy from CDN, only when a badge unlocks) ─────────
+async function loadConfetti() {
+  if (window.confetti) return window.confetti;
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js";
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+  return window.confetti;
+}
+
+async function fireBadgeConfetti() {
+  try {
+    const confetti = await loadConfetti();
+    if (!confetti) return;
+    const colors = ["#7FBFB8", "#5EA8A1", "#F59E0B", "#FCD34D", "#fff"];
+    confetti({ particleCount: 80, spread: 70, origin: { y: 0.55 }, colors });
+    setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 55, origin: { x: 0, y: 0.7 }, colors }), 220);
+    setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 55, origin: { x: 1, y: 0.7 }, colors }), 220);
+  } catch (e) {
+    // Silently swallow — celebration is decorative
+    console.warn("confetti failed:", e);
+  }
+}
+
 async function loadCloudinaryWidget() {
   if (window.cloudinary) return;
   await new Promise((res, rej) => {
@@ -591,6 +617,17 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .step-body{}
 .step-title{font-family:'Raleway',sans-serif;font-weight:700;font-size:14px;color:#1A1A1A;margin-bottom:3px}
 .step-desc{font-size:13px;color:#6B6B6B;line-height:1.5}
+
+/* ── Badge celebration ── */
+.celebration-overlay{position:fixed;inset:0;background:rgba(26,26,26,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:24px;animation:fade-in .2s ease-out}
+.celebration-card{background:#fff;border-radius:16px;padding:36px 32px 28px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:pop-in .35s cubic-bezier(.18,.89,.32,1.28);position:relative}
+.celebration-emoji{font-size:64px;line-height:1;margin-bottom:14px;display:inline-block;animation:badge-bounce .6s ease-out}
+.celebration-tag{font-family:'Raleway',sans-serif;font-weight:700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#5EA8A1;margin-bottom:8px}
+.celebration-name{font-family:'Raleway',sans-serif;font-weight:700;font-size:24px;color:#1A1A1A;margin-bottom:10px}
+.celebration-desc{font-size:14px;color:#6B6B6B;line-height:1.55;margin-bottom:22px}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes pop-in{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes badge-bounce{0%{transform:scale(0) rotate(-15deg)}60%{transform:scale(1.15) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
 
 /* ── Mobile (≤640px) ── */
 @media (max-width: 640px) {
@@ -1008,6 +1045,33 @@ export default function App() {
   const [newRolesCount, setNewRolesCount] = useState(0);
   const [showBadgeInfo, setShowBadgeInfo] = useState(false);
   const [selectedBadgeId, setSelectedBadgeId] = useState(null);
+  const [earnedSnapshot, setEarnedSnapshot] = useState(null); // null = not yet captured (suppress first-load celebration)
+  const [celebrationQueue, setCelebrationQueue] = useState([]); // badge ids to celebrate, in order
+  const celebratingBadge = celebrationQueue[0] || null;
+
+  // Detect newly-earned badges and queue celebrations
+  useEffect(() => {
+    if (!obm) return;
+    const earned = earnedBadgeIds(profile, spotlight);
+    if (earnedSnapshot === null) {
+      // First snapshot after login — don't celebrate, just record
+      setEarnedSnapshot(earned);
+      return;
+    }
+    const newlyEarned = [...earned].filter(id => !earnedSnapshot.has(id));
+    if (newlyEarned.length) {
+      setCelebrationQueue(q => [...q, ...newlyEarned]);
+    }
+    // Update snapshot if it actually changed (avoid re-trigger loops)
+    if (earned.size !== earnedSnapshot.size || newlyEarned.length || [...earnedSnapshot].some(id => !earned.has(id))) {
+      setEarnedSnapshot(earned);
+    }
+  }, [profile, spotlight, obm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fire confetti each time a celebration becomes active
+  useEffect(() => {
+    if (celebratingBadge) fireBadgeConfetti();
+  }, [celebratingBadge]);
 
   async function uploadPhoto() {
     if (!obm) return;
@@ -1296,7 +1360,9 @@ export default function App() {
           <div><div className="logo">Prowess Project</div><div className="logo-sub">OBM Profile Portal</div></div>
           {obm && <button className="btn btn-g btn-sm" onClick={() => {
             try { localStorage.removeItem("prowess-session"); } catch {}
-            setStage("email"); setObm(null); setEmail(""); setCode(""); setCodeError(""); setNotFound(false); reset();
+            setStage("email"); setObm(null); setEmail(""); setCode(""); setCodeError(""); setNotFound(false);
+            setEarnedSnapshot(null); setCelebrationQueue([]);
+            reset();
           }}>Sign Out</button>}
         </header>
         <div className="teal-bar"></div>
@@ -2384,6 +2450,27 @@ export default function App() {
             {spotlightSaving ? <><span className="spin"></span> Saving...</> : "Save Spotlight"}
           </button>
         </div>}
+
+        {/* Badge celebration overlay */}
+        {celebratingBadge && (() => {
+          const b = BADGES.find(x => x.id === celebratingBadge);
+          if (!b) return null;
+          const queueRemaining = celebrationQueue.length - 1;
+          const dismiss = () => setCelebrationQueue(q => q.slice(1));
+          return (
+            <div className="celebration-overlay" onClick={dismiss} role="dialog" aria-modal="true">
+              <div className="celebration-card" onClick={e => e.stopPropagation()}>
+                <div className="celebration-emoji">{b.emoji}</div>
+                <div className="celebration-tag">Achievement Unlocked</div>
+                <div className="celebration-name">{b.name}</div>
+                <div className="celebration-desc">{b.desc}</div>
+                <button className="btn btn-p" style={{width:"auto",padding:"12px 32px"}} onClick={dismiss}>
+                  {queueRemaining > 0 ? `Next (${queueRemaining} more)` : "Got it"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );
