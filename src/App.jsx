@@ -2011,11 +2011,17 @@ export default function App() {
                   <div style={{display:"grid",gap:10}}>
                     {awaitingRoles.map(r => {
                       const f = r.fields;
+                      const jobUrl = f["Job board link"];
                       return (
                         <div key={r.id} style={{background:"#fff",border:"1px solid rgba(245,158,11,.35)",borderRadius:8,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
                           <div>
                             <div className="rn">{f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
                             <div className="rm">{f["Industry"]||""}{f[F_MATCH_SCORE]?` · ${f[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
+                            {jobUrl && (
+                              <a href={jobUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:6,fontSize:13,color:"#5EA8A1",fontWeight:600,textDecoration:"none"}}>
+                                View Job Posting →
+                              </a>
+                            )}
                           </div>
                           <span className="badge b-w" style={{background:"#F59E0B",color:"#fff",border:"none"}}>Check Email</span>
                         </div>
@@ -2072,6 +2078,7 @@ export default function App() {
                     const f = r.fields;
                     const candSel = f["Candidate selection"];
                     const feedback = f["Feedback form Client"];
+                    const jobUrl = f["Job board link"];
                     const FEEDBACK_TRIGGER = ["Applied Not selected", "Feedback form Client"];
                     const showFeedback = candSel && FEEDBACK_TRIGGER.includes(candSel) && feedback && String(feedback).trim();
                     const statusLabel = candSel || f["Application status"] || f[F_MATCH_STATUS];
@@ -2081,6 +2088,11 @@ export default function App() {
                           <div>
                             <div className="rn">{f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
                             <div className="rm">{f["Industry"]||""}{f[F_MATCH_SCORE]?` · ${f[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
+                            {jobUrl && (
+                              <a href={jobUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:6,fontSize:13,color:"#5EA8A1",fontWeight:600,textDecoration:"none"}}>
+                                View Job Posting →
+                              </a>
+                            )}
                           </div>
                           <Badge s={statusLabel} />
                         </div>
