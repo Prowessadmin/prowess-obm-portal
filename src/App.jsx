@@ -213,8 +213,8 @@ async function findByEmail(email) {
 }
 
 async function getMatches(pmId) {
-  // Pull response-yes + awaiting-response rows server-side, then detect the linkage field
-  // (don't assume it's literally named "PM Profile" — scan all linked-array fields for our pmId).
+  // Pull response-yes + awaiting-response rows server-side, then detect the linkage field by
+  // scanning every array field for our pmId (the link field's name varies in Airtable).
   const formula = `OR(
     LOWER(TRIM({Application status})) = "response yes",
     LOWER(TRIM({Application status})) = "awaiting response"
@@ -222,59 +222,18 @@ async function getMatches(pmId) {
   const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc&maxRecords=200`);
   const all = d.records || [];
-
-  const linkFieldName = (record) => {
-    for (const [k, v] of Object.entries(record.fields || {})) {
-      if (Array.isArray(v) && v.includes(pmId)) return k;
+  const isLinked = (r) => {
+    for (const v of Object.values(r.fields || {})) {
+      if (Array.isArray(v) && v.includes(pmId)) return true;
     }
-    return null;
+    return false;
   };
-  const isLinked = (r) => linkFieldName(r) !== null;
-
   const linked = all.filter(isLinked);
   const statusOf = r => String(r.fields["Application status"] || "").trim().toLowerCase();
-  const responseYes = linked.filter(r => statusOf(r) === "response yes");
-  const awaiting    = linked.filter(r => statusOf(r) === "awaiting response");
-
-  let debugInfo = null;
-  if (!responseYes.length && !awaiting.length) {
-    try {
-      const dbg = await atFetch(`/${TBL_MATCHING}?maxRecords=200&sort[0][field]=Created&sort[0][direction]=desc`);
-      const recs = dbg.records || [];
-      const linkedAny = recs.filter(isLinked);
-      if (linkedAny.length) {
-        debugInfo = {
-          kind: "linkedButFiltered",
-          linkField: linkFieldName(linkedAny[0]),
-          rows: linkedAny.map(r => ({
-            id: r.id,
-            applicationStatus: r.fields["Application status"] ?? null,
-            candidateSelection: r.fields["Candidate selection"] ?? null,
-            triggerEmail: r.fields["❇️ Trigger email to talent"] ?? null,
-            clientName: r.fields["Client Name"] ?? r.fields["Role Title"] ?? null,
-          })),
-        };
-      } else {
-        debugInfo = {
-          kind: "notLinked",
-          pmId,
-          totalSampled: recs.length,
-          recentSample: recs.slice(0, 3).map(r => ({
-            id: r.id,
-            fields: Object.fromEntries(
-              Object.entries(r.fields || {}).map(([k, v]) => [
-                k,
-                Array.isArray(v) ? `Array(${v.length}): ${JSON.stringify(v).slice(0, 80)}` : String(v ?? "null").slice(0, 80),
-              ])
-            ),
-          })),
-        };
-      }
-    } catch (e) {
-      console.warn("[Matches Debug] error:", e);
-    }
-  }
-  return { responseYes, awaiting, debugInfo, pmId };
+  return {
+    responseYes: linked.filter(r => statusOf(r) === "response yes"),
+    awaiting:    linked.filter(r => statusOf(r) === "awaiting response"),
+  };
 }
 
 async function getSpotlight(email) {
@@ -632,6 +591,42 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .step-body{}
 .step-title{font-family:'Raleway',sans-serif;font-weight:700;font-size:14px;color:#1A1A1A;margin-bottom:3px}
 .step-desc{font-size:13px;color:#6B6B6B;line-height:1.5}
+
+/* ── Mobile (≤640px) ── */
+@media (max-width: 640px) {
+  .hdr{padding:14px 18px}
+  .main{padding:24px 18px}
+  .hero{padding:36px 22px 32px}
+  .hero-title{font-size:24px;letter-spacing:.04em}
+  .hero-sub{font-size:13px}
+  .auth{margin:24px auto 0}
+  .auth-title{font-size:24px}
+  .auth-sub{font-size:14px;margin-bottom:24px}
+  .pg{font-size:22px}
+  .pe{font-size:13px}
+  .ph{margin-bottom:22px;padding-bottom:18px}
+  .welcome-hero{padding:28px 22px;border-radius:10px;margin-bottom:18px}
+  .welcome-title{font-size:20px}
+  .welcome-sub{font-size:14px}
+  .welcome-card{padding:18px}
+  .card{padding:18px}
+  .save-bar{padding:12px 18px;flex-wrap:wrap;gap:8px}
+  .save-bar .btn{flex:1;min-width:0}
+  .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{padding:10px 16px;white-space:nowrap;flex-shrink:0;font-size:11px}
+  .mode-grid{grid-template-columns:1fr !important}
+  .legend{flex-wrap:wrap;gap:8px}
+  .upload-zone{padding:32px 16px}
+  .role-card{flex-direction:column;align-items:flex-start;gap:10px}
+  /* Force inline 2-col grids in profile/details to single column on phones */
+  .stack-mobile,
+  div[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important}
+  /* Tap targets */
+  .btn,.btn-ts,.btn-to{min-height:44px}
+  /* Ensure inputs are at least 16px so iOS doesn't zoom */
+  .fi,.rate-in{font-size:16px}
+}
 `;
 
 // ── Status badge ─────────────────────────────────────────────────
@@ -958,6 +953,25 @@ export default function App() {
   const [sendingCode, setSendingCode] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Auto-login from saved session on first mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("prowess-session");
+      if (!raw) return;
+      const session = JSON.parse(raw);
+      if (!session?.email || !session?.expiresAt) return;
+      if (new Date(session.expiresAt) <= new Date()) {
+        localStorage.removeItem("prowess-session");
+        return;
+      }
+      // Valid session — skip login flow entirely and load the profile
+      loadProfile(session.email);
+    } catch {
+      try { localStorage.removeItem("prowess-session"); } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [email, setEmail]   = useState("");
   const [obm, setObm]       = useState(null);
   const [roles, setRoles]   = useState([]);
@@ -992,7 +1006,6 @@ export default function App() {
   const [spotlightDraft, setSpotlightDraft] = useState({});
   const [photoUploading, setPhotoUploading] = useState(false);
   const [newRolesCount, setNewRolesCount] = useState(0);
-  const [matchesDebug, setMatchesDebug] = useState(null); // { kind, ... } from getMatches
   const [showBadgeInfo, setShowBadgeInfo] = useState(false);
 
   async function uploadPhoto() {
@@ -1119,10 +1132,20 @@ export default function App() {
     }
   }
 
-  async function loadProfile() {
+  async function loadProfile(emailArg) {
+    const e = (emailArg || email).toLowerCase().trim();
+    if (emailArg) setEmail(emailArg);
     setErr("");
     setStage("loading");
     try {
+      // Persist a 30-day session
+      try {
+        localStorage.setItem("prowess-session", JSON.stringify({
+          email: e,
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }));
+      } catch {}
+
       // Load taxonomy fresh every login
       const [p, s, t, indRec, rec] = await Promise.all([
         getSkills(TBL_PRIMARY, "Skill Name"),
@@ -1135,23 +1158,25 @@ export default function App() {
             .filter(o => o.name)
             .sort((a, b) => a.name.localeCompare(b.name))
         ),
-        findByEmail(email.toLowerCase().trim()),
+        findByEmail(e),
       ]);
       setPOpts(p); setSOpts(s); setTOpts(t); setIndOpts(indRec);
-      if (!rec) { setNotFound(true); setStage("email"); return; }
+      if (!rec) {
+        try { localStorage.removeItem("prowess-session"); } catch {}
+        setNotFound(true); setStage("email"); return;
+      }
       setObm(rec);
       const [matchResult, spot] = await Promise.all([
         getMatches(rec.id),
-        getSpotlight(email.toLowerCase().trim()).catch(() => null),
+        getSpotlight(e).catch(() => null),
       ]);
       const m = matchResult.responseYes;
       setRoles(m);
       setAwaitingRoles(matchResult.awaiting);
-      setMatchesDebug(matchResult.debugInfo);
       setSpotlight(spot);
       setSpotlightLoaded(true);
       // "New since last visit" tracking via localStorage
-      const lastVisitKey = `prowess-last-visit-${email.toLowerCase().trim()}`;
+      const lastVisitKey = `prowess-last-visit-${e}`;
       const lastVisitISO = localStorage.getItem(lastVisitKey);
       const lastVisit = lastVisitISO ? new Date(lastVisitISO) : null;
       const newCount = lastVisit ? m.filter(r => r.createdTime && new Date(r.createdTime) > lastVisit).length : 0;
@@ -1162,9 +1187,6 @@ export default function App() {
       const sIds = new Set(f[F_SECONDARY] || []);
       const tIds = new Set(f[F_TECH]      || []);
       const iIds = new Set(f["Industry knowledge 2"] || f[F_INDUSTRY] || []);
-      console.log("Primary IDs:", [...pIds], "| Options:", p.length);
-      console.log("Secondary IDs:", [...sIds], "| Options:", s.length);
-      console.log("Tech IDs:", [...tIds], "| Options:", t.length);
       const selName = v => v?.name || v || null;
       // Airtable proxy returns fields by NAME not ID
       // Use both field names and IDs as fallback
@@ -1192,9 +1214,9 @@ export default function App() {
         s.some(o => sIds.has(o.id)) ||
         t.some(o => tIds.has(o.id));
       setStage(hasSkills ? "profile" : "welcome");
-    } catch(e) {
-      console.error(e);
-      setErr("Something went wrong: " + e.message);
+    } catch(err) {
+      console.error(err);
+      setErr("Something went wrong: " + err.message);
       setStage("email");
     }
   }
@@ -1271,7 +1293,10 @@ export default function App() {
       <div className="wrap">
         <header className="hdr">
           <div><div className="logo">Prowess Project</div><div className="logo-sub">OBM Profile Portal</div></div>
-          {obm && <button className="btn btn-g btn-sm" onClick={() => { setStage("email"); setObm(null); setEmail(""); setCode(""); setCodeError(""); setNotFound(false); reset(); }}>Sign Out</button>}
+          {obm && <button className="btn btn-g btn-sm" onClick={() => {
+            try { localStorage.removeItem("prowess-session"); } catch {}
+            setStage("email"); setObm(null); setEmail(""); setCode(""); setCodeError(""); setNotFound(false); reset();
+          }}>Sign Out</button>}
         </header>
         <div className="teal-bar"></div>
         <main className="main">
@@ -2134,48 +2159,6 @@ export default function App() {
                         </div>
                       );
                     })}
-                  </div>
-                </div>
-              )}
-              {!roles.length && !awaitingRoles.length && matchesDebug?.kind === "linkedButFiltered" && matchesDebug.rows?.length > 0 && (
-                <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.4)",borderRadius:8,padding:"16px 20px",marginBottom:16,fontSize:13,lineHeight:1.55}}>
-                  <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:6,color:"#8A5E1A"}}>
-                    Debug · {matchesDebug.rows.length} Matching record{matchesDebug.rows.length===1?"":"s"} linked to your profile via field "{matchesDebug.linkField}", but none have status "response yes" or "awaiting response"
-                  </strong>
-                  <div style={{color:"#6B6B6B",marginBottom:10}}>
-                    Below is what we found in the Matching table — share this with the dev team if the statuses look wrong.
-                  </div>
-                  <ul style={{margin:0,padding:0,listStyle:"none",display:"grid",gap:6}}>
-                    {matchesDebug.rows.map((r, i) => (
-                      <li key={r.id} style={{padding:"8px 12px",background:"rgba(255,255,255,.6)",border:"1px solid rgba(176,125,42,.2)",borderRadius:6,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:12,color:"#1A1A1A"}}>
-                        <strong>{i+1}.</strong> {r.clientName || "(no client name)"} ·{" "}
-                        Application status: <code>{JSON.stringify(r.applicationStatus)}</code> ·{" "}
-                        Candidate selection: <code>{JSON.stringify(r.candidateSelection)}</code> ·{" "}
-                        Trigger email: <code>{JSON.stringify(r.triggerEmail)}</code>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {!roles.length && !awaitingRoles.length && matchesDebug?.kind === "notLinked" && (
-                <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.4)",borderRadius:8,padding:"16px 20px",marginBottom:16,fontSize:13,lineHeight:1.55}}>
-                  <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:6,color:"#8A5E1A"}}>
-                    Debug · No Matching records reference your PM Profile (id: <code>{matchesDebug.pmId}</code>) in any linked field
-                  </strong>
-                  <div style={{color:"#6B6B6B",marginBottom:10}}>
-                    We sampled the {matchesDebug.totalSampled} most recent Matching records and none of them include your record ID in any linked-record field. Either your profile genuinely hasn't been matched to any roles yet, or the field that links roles to OBMs is something we haven't checked. Share the field structure below with the dev team.
-                  </div>
-                  <div style={{display:"grid",gap:8,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:11,color:"#1A1A1A"}}>
-                    {matchesDebug.recentSample.map((r, i) => (
-                      <details key={r.id} style={{padding:"8px 12px",background:"rgba(255,255,255,.6)",border:"1px solid rgba(176,125,42,.2)",borderRadius:6}}>
-                        <summary style={{cursor:"pointer"}}>Record {i+1} ({r.id}) — {Object.keys(r.fields).length} fields</summary>
-                        <div style={{marginTop:8,display:"grid",gap:3}}>
-                          {Object.entries(r.fields).map(([k, v]) => (
-                            <div key={k}><strong>{k}:</strong> <span style={{color:"#5EA8A1"}}>{v}</span></div>
-                          ))}
-                        </div>
-                      </details>
-                    ))}
                   </div>
                 </div>
               )}
