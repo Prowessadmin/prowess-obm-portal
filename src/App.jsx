@@ -49,7 +49,7 @@ const BADGES = [
   { id: "industry",  emoji: "🏢", name: "Industry Insider", desc: "Add 3 or more industries" },
   { id: "tech",      emoji: "🛠️", name: "Tech Stack Pro",   desc: "Add 5 or more tech skills" },
   { id: "story",     emoji: "📖", name: "Storyteller",      desc: "Fill in Who You Are and Greatest Achievement on your Spotlight" },
-  { id: "spotlight", emoji: "🏆", name: "Spotlight Star",   desc: "Complete every Spotlight field" },
+  { id: "spotlight", emoji: "⭐", name: "Spotlight Star",   desc: "Complete every Spotlight field" },
 ];
 
 function spotlightAllFilled(spotlight) {
