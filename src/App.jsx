@@ -13,6 +13,25 @@ const TBL_TECH     = "tbliJ5Q4yU0m8EnsG";
 const TBL_INDUSTRY = "tbl2qU124blP8q1nv"; // Industry knowledge — linked from "Industry knowledge 2" on PM Profile
 const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
 
+// Application response form (Airtable shared form) — supports prefill_<FieldName>
+const APPLY_FORM_BASE = "https://airtable.com/appaOBVteWvtxFcKr/shrKBK20co7xggD5E";
+
+function buildApplyUrl({ roleName, email }) {
+  // Shotgun the prefill across likely field names; Airtable ignores unknowns.
+  const params = new URLSearchParams();
+  if (roleName) {
+    ["Role", "Client Name", "Client", "Role Title", "Role Name", "Position"].forEach(k => {
+      params.append(`prefill_${k}`, roleName);
+    });
+  }
+  if (email) {
+    ["Email", "OBM Email", "PM Email", "Your Email"].forEach(k => {
+      params.append(`prefill_${k}`, email);
+    });
+  }
+  return `${APPLY_FORM_BASE}?${params.toString()}`;
+}
+
 // Cloudinary unsigned upload (avatars)
 const CLOUDINARY_CLOUD = "diwso2edi";
 const CLOUDINARY_PRESET = "prowess_obm_avatars";
@@ -2092,16 +2111,18 @@ export default function App() {
                     </span>
                   </div>
                   <p style={{fontSize:14,color:"#1A1A1A",lineHeight:1.55,marginBottom:14}}>
-                    Prowess emailed you about {awaitingRoles.length === 1 ? "this role" : "these roles"}. Check your inbox to express interest — once you reply yes, the role moves to your active matches below.
+                    Prowess emailed you about {awaitingRoles.length === 1 ? "this role" : "these roles"}. Tap <strong>Apply</strong> to respond directly here, or reply to the email — either way works.
                   </p>
                   <div style={{display:"grid",gap:10}}>
                     {awaitingRoles.map(r => {
                       const f = r.fields;
                       const jobUrl = f["Job board link"];
+                      const roleName = f["Client Name"] || f["Role Title"] || "";
+                      const applyUrl = buildApplyUrl({ roleName, email });
                       return (
                         <div key={r.id} style={{background:"#fff",border:"1px solid rgba(245,158,11,.35)",borderRadius:8,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-                          <div>
-                            <div className="rn">{f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
+                          <div style={{flex:"1 1 240px",minWidth:0}}>
+                            <div className="rn">{roleName || "Ops Partner Role"}</div>
                             <div className="rm">{f["Industry"]||""}{f[F_MATCH_SCORE]?` · ${f[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
                             {jobUrl && (
                               <a href={jobUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:6,fontSize:13,color:"#5EA8A1",fontWeight:600,textDecoration:"none"}}>
@@ -2109,7 +2130,14 @@ export default function App() {
                               </a>
                             )}
                           </div>
-                          <span className="badge b-w" style={{background:"#F59E0B",color:"#fff",border:"none"}}>Check Email</span>
+                          <a
+                            href={applyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{display:"inline-flex",alignItems:"center",gap:6,background:"#F59E0B",color:"#fff",padding:"10px 18px",borderRadius:8,fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:12,letterSpacing:".08em",textTransform:"uppercase",textDecoration:"none",whiteSpace:"nowrap",boxShadow:"0 1px 3px rgba(245,158,11,.3)"}}
+                          >
+                            Apply →
+                          </a>
                         </div>
                       );
                     })}
