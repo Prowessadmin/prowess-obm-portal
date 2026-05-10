@@ -20,7 +20,7 @@ function buildApplyUrl({ roleName, email }) {
   // Shotgun the prefill across likely field names; Airtable ignores unknowns.
   const params = new URLSearchParams();
   if (roleName) {
-    ["Role", "Client Name", "Client", "Role Title", "Role Name", "Position"].forEach(k => {
+    ["Name of Role", "Role", "Client Name", "Client", "Role Title", "Role Name", "Position"].forEach(k => {
       params.append(`prefill_${k}`, roleName);
     });
   }
