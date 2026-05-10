@@ -1957,7 +1957,7 @@ export default function App() {
                 )}
                 {awaitingRoles.length === 0 && roles.length > 0 && ` (${roles.length})`}
               </button>
-              <button className={`tab ${tab==="spotlight"?"on":""}`} onClick={() => setTab("spotlight")}>My Spotlight ✨</button>
+              <button className={`tab ${tab==="spotlight"?"on":""}`} onClick={() => setTab("spotlight")}>My Spotlight</button>
             </div>
 
             {tab === "profile" && <>
