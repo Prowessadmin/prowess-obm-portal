@@ -68,10 +68,10 @@ function computeProfileStrength(profile, spotlight) {
   const earned = checks.filter(c => c.done).length;
   const pct = Math.round((earned / checks.length) * 100);
   const tier =
-    pct >= 86 ? { label: "All-Star",  color: "#F59E0B", message: "Your profile is fully built. You'll show up first when clients search." } :
-    pct >= 61 ? { label: "Excellent", color: "#7FBFB8", message: "Strong profile. Polish a few more details to reach All-Star." } :
-    pct >= 31 ? { label: "Strong",    color: "#5EA8A1", message: "You're well underway — a few more details will help you stand out." } :
-                { label: "Beginner",  color: "#A0A0A0", message: "Just getting started — let's add the basics so Prowess can match you." };
+    pct >= 86 ? { label: "All-Star",  color: "#F59E0B", message: "Your profile is fully built. When a matching role lands, Prowess's algorithm has everything it needs to put you in the top picks." } :
+    pct >= 61 ? { label: "Excellent", color: "#7FBFB8", message: "Strong profile. A few more details will sharpen your match odds when roles come in." } :
+    pct >= 31 ? { label: "Strong",    color: "#5EA8A1", message: "You're well underway — keep building so the matching algorithm has more to work with." } :
+                { label: "Beginner",  color: "#A0A0A0", message: "Just getting started — add the basics so Prowess's algorithm can match you to roles as they come in." };
   const nextSteps = checks.filter(c => !c.done).slice(0, 3);
   return { pct, tier, checks, nextSteps };
 }
@@ -215,10 +215,7 @@ async function findByEmail(email) {
 async function getMatches(pmId) {
   const formula = `AND(
     FIND("${pmId}", ARRAYJOIN({PM Profile}, ",")),
-    {❇️ Trigger email to talent} = TRUE(),
-    {Application status} != "not a match",
-    {Application status} != "Pending Final Assessments",
-    {Application status} != "Profile & Scoring Complete"
+    {Application status} = "response yes"
   )`;
   const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc`);
@@ -511,8 +508,10 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .tag-e{background:#7FBFB8;border:1px solid #5EA8A1;color:#fff;padding:6px 10px 6px 14px;border-radius:20px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
 .del{background:rgba(0,0,0,.2);border:none;color:#fff;cursor:pointer;font-size:13px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
 .del:hover{background:rgba(241,93,96,.8)}
-.opt{background:#fff;border:1.5px solid #C8C9CA;color:#4A4A4A;padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif}
-.opt:hover{border-color:#7FBFB8;color:#1F5C58;background:#E8F4F3}
+.opt{background:#fff;border:1.5px dashed #7FBFB8;color:#5EA8A1;padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;font-weight:500;display:inline-flex;align-items:center;gap:5px}
+.opt::before{content:"+";font-weight:700;color:#7FBFB8;font-size:14px;line-height:1}
+.opt:hover{border-style:solid;background:#E8F4F3;color:#1F5C58;transform:translateY(-1px);box-shadow:0 2px 6px rgba(127,191,184,.25)}
+.opt:hover::before{color:#5EA8A1}
 .sug{background:#7FBFB8;border:1px solid #5EA8A1;color:#fff;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s}
 .sug.off{background:#F1F2F2;border-color:#C8C9CA;color:#A0A0A0;text-decoration:line-through}
 .empty{color:#A0A0A0;font-size:14px;font-style:italic}
@@ -877,7 +876,7 @@ function SkillPicker({ label, selected, options, onChange, editing, catMap }) {
           {selected.length > 0 && <div className="div-lbl">Add more</div>}
           <input className="fi" style={{marginBottom:12}} placeholder={`Search ${label.toLowerCase()}...`} value={search} onChange={e => { setSearch(e.target.value); setOpen(null); }} />
           {search.length > 1
-            ? <div className="tags">{results.slice(0,15).map(o => <button key={o.id} className="opt" onClick={() => { onChange([...selected, o]); setSearch(""); }}>+ {o.name}</button>)}
+            ? <div className="tags">{results.slice(0,15).map(o => <button key={o.id} className="opt" onClick={() => { onChange([...selected, o]); setSearch(""); }}>{o.name}</button>)}
                 {!results.length && <span className="empty">No matches for "{search}"</span>}</div>
             : <div>{Object.entries(grouped).filter(([,v]) => v.length).map(([cat, items]) => (
                 <div key={cat} style={{marginBottom:8}}>
@@ -885,7 +884,7 @@ function SkillPicker({ label, selected, options, onChange, editing, catMap }) {
                     <span style={{fontSize:11,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"#6B6B6B"}}>{cat} ({items.length})</span>
                     <span style={{color:"#7FBFB8",fontSize:18,lineHeight:1}}>{open===cat?"−":"+"}</span>
                   </button>
-                  {open===cat && <div className="tags" style={{paddingTop:6,paddingBottom:10}}>{items.map(o => <button key={o.id} className="opt" onClick={() => onChange([...selected, o])}>+ {o.name}</button>)}</div>}
+                  {open===cat && <div className="tags" style={{paddingTop:6,paddingBottom:10}}>{items.map(o => <button key={o.id} className="opt" onClick={() => onChange([...selected, o])}>{o.name}</button>)}</div>}
                   <div style={{borderBottom:"1px solid #E0E1E1"}}></div>
                 </div>
               ))}</div>
@@ -931,6 +930,7 @@ export default function App() {
   const [spotlightDraft, setSpotlightDraft] = useState({});
   const [photoUploading, setPhotoUploading] = useState(false);
   const [newRolesCount, setNewRolesCount] = useState(0);
+  const [showBadgeInfo, setShowBadgeInfo] = useState(false);
 
   async function uploadPhoto() {
     if (!obm) return;
@@ -1628,7 +1628,7 @@ export default function App() {
                   )}
                   {!profile.photoUrl && (
                     <div style={{fontSize:13,color:"#5EA8A1",lineHeight:1.5,marginBottom:10,fontStyle:"italic"}}>
-                      Tap your photo to add a headshot — clients connect faster with a face.
+                      Tap your photo to add a headshot — it makes your candidate card more personal when Prowess introduces you.
                     </div>
                   )}
                   {/* Badges */}
@@ -1636,31 +1636,60 @@ export default function App() {
                     const earned = earnedBadgeIds(profile, spotlight);
                     return (
                       <div>
-                        <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0",marginBottom:6}}>
-                          Achievements · {earned.size}/{BADGES.length}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                          <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0"}}>
+                            Achievements · {earned.size}/{BADGES.length}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowBadgeInfo(s => !s)}
+                            style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:"#5EA8A1",fontFamily:"Raleway,sans-serif",fontWeight:600,letterSpacing:".04em",textDecoration:"underline"}}
+                          >
+                            {showBadgeInfo ? "Hide details" : "About these badges"}
+                          </button>
                         </div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                           {BADGES.map(b => {
                             const on = earned.has(b.id);
                             return (
-                              <span
+                              <div
                                 key={b.id}
-                                title={`${b.name}${on ? " — earned" : " — locked"}: ${b.desc}`}
+                                title={b.desc}
                                 style={{
-                                  display:"inline-flex",alignItems:"center",justifyContent:"center",
-                                  width:30,height:30,borderRadius:"50%",
-                                  background: on ? "#E8F4F3" : "#F1F2F2",
+                                  display:"inline-flex",alignItems:"center",gap:6,
+                                  padding:"4px 10px 4px 6px",borderRadius:20,
+                                  background: on ? "#E8F4F3" : "#F8F8F8",
                                   border: `1px solid ${on ? "rgba(127,191,184,.5)" : "#E0E1E1"}`,
-                                  fontSize:15,opacity:on?1:0.4,cursor:"help",
-                                  filter: on ? "none" : "grayscale(80%)",
-                                  transition:"all .2s",
+                                  opacity: on ? 1 : 0.7,
                                 }}
                               >
-                                {b.emoji}
-                              </span>
+                                <span style={{fontSize:14,filter: on ? "none" : "grayscale(80%)",lineHeight:1}}>{b.emoji}</span>
+                                <span style={{fontSize:11,fontWeight:600,fontFamily:"Raleway,sans-serif",color: on ? "#1F5C58" : "#6B6B6B"}}>{b.name}</span>
+                              </div>
                             );
                           })}
                         </div>
+                        {showBadgeInfo && (
+                          <div style={{marginTop:12,padding:"12px 14px",background:"#FAFAFA",border:"1px solid #E0E1E1",borderRadius:8}}>
+                            <div style={{display:"grid",gap:8}}>
+                              {BADGES.map(b => {
+                                const on = earned.has(b.id);
+                                return (
+                                  <div key={b.id} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
+                                    <span style={{fontSize:16,filter:on?"none":"grayscale(80%)",opacity:on?1:0.5,flexShrink:0}}>{b.emoji}</span>
+                                    <div>
+                                      <strong style={{fontFamily:"Raleway,sans-serif",color:"#1A1A1A"}}>{b.name}</strong>
+                                      <span style={{color:on?"#5EA8A1":"#A0A0A0",fontWeight:600,marginLeft:8,fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>
+                                        {on ? "✓ Earned" : "Locked"}
+                                      </span>
+                                      <div style={{color:"#6B6B6B",marginTop:2}}>{b.desc}</div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -1712,7 +1741,10 @@ export default function App() {
               {editing && eMode==="review" && sug && <SugReview sug={sug} step={sugStep} onStepChange={setSugStep} onAdd={addToExisting} onReplace={replaceAll} onManual={() => { setSug(null); setSugStep("found"); setEMode("manual"); }} onReupload={() => { setSug(null); setSugStep("found"); setEMode("resume"); }} />}
 
               {/* Edit legend */}
-              {ed && <div className="legend"><div className="li"><div className="dot-t"></div> Your current skills (tap ✕ to remove)</div><div className="li"><div className="dot-g"></div> Available to add</div></div>}
+              {ed && <div className="legend">
+                <div className="li"><span style={{display:"inline-block",background:"#7FBFB8",border:"1px solid #5EA8A1",color:"#fff",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:600}}>Your skill ✕</span> tap ✕ to remove</div>
+                <div className="li"><span style={{display:"inline-block",background:"#fff",border:"1.5px dashed #7FBFB8",color:"#5EA8A1",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:500}}>+ Available</span> tap to add</div>
+              </div>}
 
               {/* Skills sections — hide during review */}
               {eMode !== "review" && <>
@@ -1747,7 +1779,7 @@ export default function App() {
                           .map(o => (
                             <button key={o.id} className="opt"
                               onClick={() => setProfile(p => ({...p, industries: [...p.industries, o]}))}>
-                              + {o.name}
+                              {o.name}
                             </button>
                           ))
                         }
@@ -1866,17 +1898,41 @@ export default function App() {
             </>}
 
             {tab === "roles" && <div>
+              <div className="info" style={{marginBottom:20,fontSize:14,lineHeight:1.55}}>
+                <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>How matching works</strong>
+                When a new role comes in, Prowess's algorithm scores every OBM and emails the top picks. The roles you've been picked for show up here — you don't need to apply or chase.
+              </div>
               {!roles.length
-                ? <div className="card" style={{textAlign:"center",padding:"48px 24px"}}><div style={{fontSize:32,marginBottom:12}}>🔍</div><p style={{color:"#6B6B6B",fontSize:15}}>No roles yet. When Prowess matches you to an opportunity, it will appear here.</p></div>
-                : roles.map(r => (
-                    <div key={r.id} className="role-card">
-                      <div>
-                        <div className="rn">{r.fields["Client Name"]||r.fields["Role Title"]||"Ops Partner Role"}</div>
-                        <div className="rm">{r.fields["Industry"]||""}{r.fields[F_MATCH_SCORE]?` · ${r.fields[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
+                ? <div className="card" style={{textAlign:"center",padding:"48px 24px"}}><div style={{fontSize:32,marginBottom:12}}>🔍</div><p style={{color:"#6B6B6B",fontSize:15,lineHeight:1.6,maxWidth:440,margin:"0 auto"}}>No matches yet. The stronger your profile, the more often you'll be in the top picks Prowess emails when a role lands.</p></div>
+                : roles.map(r => {
+                    const f = r.fields;
+                    const candSel = f["Candidate selection"];
+                    const feedback = f["Feedback form Client"];
+                    const FEEDBACK_TRIGGER = ["Applied Not selected", "Feedback form Client"];
+                    const showFeedback = candSel && FEEDBACK_TRIGGER.includes(candSel) && feedback && String(feedback).trim();
+                    const statusLabel = candSel || f["Application status"] || f[F_MATCH_STATUS];
+                    return (
+                      <div key={r.id} style={{marginBottom:12}}>
+                        <div className="role-card" style={showFeedback ? {marginBottom:0,borderRadius:"8px 8px 0 0",borderBottom:"none"} : {marginBottom:0}}>
+                          <div>
+                            <div className="rn">{f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
+                            <div className="rm">{f["Industry"]||""}{f[F_MATCH_SCORE]?` · ${f[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
+                          </div>
+                          <Badge s={statusLabel} />
+                        </div>
+                        {showFeedback && (
+                          <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.3)",borderTop:"none",borderRadius:"0 0 8px 8px",padding:"16px 24px"}}>
+                            <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#8A5E1A",marginBottom:8}}>
+                              Client Feedback
+                            </div>
+                            <div style={{fontSize:14,color:"#1A1A1A",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                              {feedback}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <Badge s={r.fields[F_MATCH_STATUS]} />
-                    </div>
-                  ))
+                    );
+                  })
               }
             </div>}
 
@@ -1887,9 +1943,9 @@ export default function App() {
               const tier = pct > 70 ? "high" : pct >= 40 ? "mid" : "low";
               const tierColor = tier === "high" ? "#7FBFB8" : tier === "mid" ? "#F59E0B" : "#C8C9CA";
               const tierMessage =
-                tier === "high" ? "Looking great! A complete spotlight gets you noticed faster." :
-                tier === "mid"  ? "Good start — a few more details will help you stand out." :
-                                  "The more you share, the better Prowess can match you.";
+                tier === "high" ? "Looking great! Your candidate card will speak for itself when Prowess introduces you." :
+                tier === "mid"  ? "Good start — a few more details will make your candidate card pop." :
+                                  "The more you share, the more your candidate card has to say when Prowess sends it.";
               return (
                 <div style={{paddingBottom: spotlightEditing ? 80 : 0}}>
                   <div className="info" style={{marginBottom:20,fontSize:15,lineHeight:1.6}}>
