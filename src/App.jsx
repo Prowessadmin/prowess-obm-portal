@@ -556,9 +556,10 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
 .ph{margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid #E0E1E1}
 .pg{font-family:'Raleway',sans-serif;font-size:26px;font-weight:700;margin-bottom:4px}
 .pe{color:#6B6B6B;font-size:14px}
-.tabs{display:flex;margin-bottom:28px;border-bottom:2px solid #E0E1E1}
-.tab{padding:12px 24px;background:transparent;border:none;border-bottom:2px solid transparent;color:#6B6B6B;font-family:'Raleway',sans-serif;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;margin-bottom:-2px;transition:all .2s}
-.tab.on{color:#7FBFB8;border-bottom-color:#7FBFB8}
+.tabs{display:flex;background:#F1F2F2;border-radius:14px;padding:5px;gap:4px;margin-bottom:24px;border:none}
+.tab{flex:1;padding:11px 14px;background:transparent;border:none;border-radius:10px;color:#6B6B6B;font-family:'Raleway',sans-serif;font-size:13px;font-weight:700;letter-spacing:.02em;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;min-height:42px}
+.tab:hover:not(.on){color:#1A1A1A;background:rgba(255,255,255,.5)}
+.tab.on{background:#fff;color:#1A1A1A;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .card{background:#fff;border:1px solid #E0E1E1;border-radius:8px;padding:24px;margin-bottom:16px}
 .card.ed{border-color:#7FBFB8;background:#FAFFFE}
 .ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
@@ -670,9 +671,8 @@ body{background:#fff;color:#1A1A1A;font-family:'DM Sans',sans-serif;min-height:1
   .card{padding:18px}
   .save-bar{padding:12px 18px;flex-wrap:wrap;gap:8px}
   .save-bar .btn{flex:1;min-width:0}
-  .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;scrollbar-width:none}
-  .tabs::-webkit-scrollbar{display:none}
-  .tab{padding:10px 16px;white-space:nowrap;flex-shrink:0;font-size:11px}
+  .tabs{padding:4px;border-radius:12px}
+  .tab{padding:9px 8px;font-size:12px;letter-spacing:0;min-height:40px}
   .mode-grid{grid-template-columns:1fr !important}
   .legend{flex-wrap:wrap;gap:8px}
   .upload-zone{padding:32px 16px}
