@@ -1025,8 +1025,11 @@ export default function App() {
   const [err, setErr]       = useState("");
   const [notFound, setNotFound] = useState(false);
   const [tab, setTab]       = useState("profile");
-  const [editing, setEditing] = useState(false);
-  const [eMode, setEMode]   = useState(null); // null|"resume"|"review"|"manual"
+  const [eMode, setEMode]   = useState(null); // null | "resume" | "review"
+  const [editingCard, setEditingCard] = useState(null); // null | "skills" | "industries" | "availability" | "details"
+  const [editSnapshot, setEditSnapshot] = useState(null); // profile snapshot for cancel revert
+  const [cardSaving, setCardSaving] = useState(false);
+  const [cardSavedAt, setCardSavedAt] = useState(null); // id of last saved card for "✓ Saved" pulse
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
   const [pOpts, setPOpts]   = useState([]);
@@ -1040,9 +1043,6 @@ export default function App() {
   const [parseComplete, setParseComplete] = useState(false);
   const [onboardStep, setOnboardStep] = useState(1); // welcome onboarding: 1..4
   const [onboardSaving, setOnboardSaving] = useState(false);
-  const [infoEditing, setInfoEditing] = useState(false);
-  const [infoSaving, setInfoSaving] = useState(false);
-  const [infoDraft, setInfoDraft] = useState({ city:"", state:"", rate:"", facts:"", discPrimary:"", discSecondary:"", vark:"" });
   const [spotlight, setSpotlight] = useState(null); // { id, fields } | null
   const [spotlightLoaded, setSpotlightLoaded] = useState(false);
   const [spotlightLoading, setSpotlightLoading] = useState(false);
@@ -1317,45 +1317,103 @@ export default function App() {
     }
   }
 
-  function addToExisting(sel) {
+  async function addToExisting(sel) {
     const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...b.filter(x => !ids.has(x.id))]; };
-    setProfile(p => ({
-      ...p,
-      primarySkills:   merge(p.primarySkills, sel.primarySkills),
-      secondarySkills: merge(p.secondarySkills, sel.secondarySkills),
-      techSkills:      merge(p.techSkills, sel.techSkills),
-      industries:      merge(p.industries, sug.industries || []),
-    }));
-    setSug(null); setSugStep("found"); setEMode("manual");
-  }
-
-  function replaceAll(sel) {
-    setProfile(p => ({
-      ...p,
-      primarySkills:   sel.primarySkills,
-      secondarySkills: sel.secondarySkills,
-      techSkills:      sel.techSkills,
-      industries:      sug.industries || [],
-    }));
-    setSug(null); setSugStep("found"); setEMode("manual");
-  }
-
-  async function save() {
-    setSaving(true); setSaved(false); setErr("");
+    const next = {
+      ...profile,
+      primarySkills:   merge(profile.primarySkills, sel.primarySkills),
+      secondarySkills: merge(profile.secondarySkills, sel.secondarySkills),
+      techSkills:      merge(profile.techSkills, sel.techSkills),
+      industries:      merge(profile.industries, sug.industries || []),
+    };
+    setProfile(next);
+    setSug(null); setSugStep("found"); setEMode(null);
+    setSaving(true);
     try {
-      await saveProfile(obm.id, profile);
-      setSaved(true); setEditing(false); setEMode(null); setSug(null);
+      await saveProfile(obm.id, next);
+      setSaved(true);
       setTimeout(() => setSaved(false), 4000);
-    } catch(e) {
+    } catch (e) {
       setErr("Save failed: " + e.message);
     } finally {
       setSaving(false);
     }
   }
 
-  function reset() { setEditing(false); setEMode(null); setSug(null); setErr(""); }
+  async function replaceAll(sel) {
+    const next = {
+      ...profile,
+      primarySkills:   sel.primarySkills,
+      secondarySkills: sel.secondarySkills,
+      techSkills:      sel.techSkills,
+      industries:      sug.industries || [],
+    };
+    setProfile(next);
+    setSug(null); setSugStep("found"); setEMode(null);
+    setSaving(true);
+    try {
+      await saveProfile(obm.id, next);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 4000);
+    } catch (e) {
+      setErr("Save failed: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const ed = editing && eMode === "manual";
+  // Inline-edit helpers — one card edits at a time
+  function startCardEdit(cardId) {
+    setEditSnapshot(profile);
+    setEditingCard(cardId);
+    setErr("");
+  }
+
+  function cancelCardEdit() {
+    if (editSnapshot) setProfile(editSnapshot);
+    setEditingCard(null);
+    setEditSnapshot(null);
+  }
+
+  async function saveCard() {
+    setCardSaving(true); setErr("");
+    try {
+      await saveProfile(obm.id, profile);
+      const id = editingCard;
+      setEditingCard(null);
+      setEditSnapshot(null);
+      setCardSavedAt(id);
+      setTimeout(() => setCardSavedAt(p => (p === id ? null : p)), 2500);
+    } catch (e) {
+      setErr("Save failed: " + e.message);
+    } finally {
+      setCardSaving(false);
+    }
+  }
+
+  function reset() { setEMode(null); setSug(null); setErr(""); cancelCardEdit(); }
+
+  // Inline edit/save/cancel button block for each editable card header
+  const cardActions = (id) => {
+    if (editingCard === id) {
+      return (
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-g btn-sm" onClick={cancelCardEdit} disabled={cardSaving}>Cancel</button>
+          <button className="btn btn-p btn-sm" onClick={saveCard} disabled={cardSaving} style={{padding:"8px 18px"}}>
+            {cardSaving ? <><span className="spin"></span> Saving</> : "Save"}
+          </button>
+        </div>
+      );
+    }
+    if (editingCard !== null) return null;
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        {cardSavedAt === id && <span style={{color:"#5EA8A1",fontSize:12,fontWeight:600,fontFamily:"Raleway,sans-serif"}}>✓ Saved</span>}
+        <button className="btn btn-g btn-sm" onClick={() => startCardEdit(id)}>✏️ Edit</button>
+      </div>
+    );
+  };
+  const isEditing = (id) => editingCard === id;
 
   // Display name helpers — prefer First + Last, then formula Name, then email
   const f = obm?.fields || {};
@@ -1596,16 +1654,14 @@ export default function App() {
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
                       <button className="btn btn-p" style={{fontSize:13}} onClick={() => {
-                        setEditing(true);
                         setEMode("resume");
                         setStage("profile");
                       }}>
                         📄 Let Prowess Scout Read My Resume
                       </button>
                       <button className="btn btn-g" style={{fontSize:13}} onClick={() => {
-                        setEditing(true);
-                        setEMode("manual");
                         setStage("profile");
+                        setTimeout(() => startCardEdit("primary"), 0);
                       }}>
                         ✏️ Add Skills Manually
                       </button>
@@ -1651,161 +1707,187 @@ export default function App() {
           )}
 
           {/* PROFILE */}
-          {stage === "profile" && obm && <div style={{paddingBottom: ed ? 80 : 0}}>
-            <div className="ph">
-              {(() => {
-                const h = new Date().getHours();
-                const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
-                const first = (profile.firstName || displayName || "").trim().split(" ")[0];
-                const greeting = first ? `Good ${tod}, ${first} 👋` : `Welcome back 👋`;
-                const s = computeProfileStrength(profile, spotlight);
-                const newRolesLine = newRolesCount > 0
-                  ? `${newRolesCount} new role match${newRolesCount === 1 ? "" : "es"} since your last visit.`
-                  : null;
-                const tierLine = (() => {
-                  if (s.pct >= 86) return "Your profile is at All-Star — you're set.";
-                  const next = s.nextSteps[0];
-                  return next
-                    ? `Profile is ${s.tier.label} (${s.pct}%) — next: ${next.action.charAt(0).toLowerCase() + next.action.slice(1)}.`
-                    : `Profile is ${s.tier.label} (${s.pct}%).`;
-                })();
-                return (
-                  <>
-                    <h1 className="pg">{greeting}</h1>
-                    <p className="pe" style={{marginTop:6,fontSize:14,color:"#4A4A4A"}}>
-                      {newRolesLine ? <><strong style={{color:"#5EA8A1"}}>{newRolesLine}</strong> </> : null}
-                      {tierLine}
-                    </p>
-                    <p className="pe" style={{marginTop:4}}>{email}</p>
-                  </>
-                );
-              })()}
-            </div>
+          {stage === "profile" && obm && <div>
             {err && <div className="err">{err}</div>}
 
-            {/* Compact info card — basic info quick-edit */}
-            {!editing && (
-              <div style={{background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,padding:infoEditing?"20px 24px":"14px 18px",marginBottom:20}}>
-                {!infoEditing ? (
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",fontSize:14,color:"#1A1A1A"}}>
-                      {(profile.city || profile.state) ? (
-                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>📍 {[profile.city, profile.state].filter(Boolean).join(", ")}</span>
-                      ) : (
-                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>📍 Add your location</span>
+            {/* HERO CARD — greeting + avatar + strength + badges + actions */}
+            {(() => {
+              const h = new Date().getHours();
+              const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+              const first = (profile.firstName || displayName || "").trim().split(" ")[0];
+              const greeting = first ? `Good ${tod}, ${first} 👋` : `Welcome back 👋`;
+              const s = computeProfileStrength(profile, spotlight);
+              const earned = earnedBadgeIds(profile, spotlight);
+              const next = s.nextSteps[0];
+              return (
+                <div style={{background:"#fff",border:"1px solid #E0E1E1",borderRadius:12,padding:"22px 24px",marginBottom:20}}>
+                  {/* Row 1: avatar + greeting + actions */}
+                  <div style={{display:"flex",gap:18,alignItems:"flex-start",flexWrap:"wrap",marginBottom:18}}>
+                    {/* Avatar — click to upload */}
+                    <button
+                      type="button"
+                      onClick={uploadPhoto}
+                      disabled={photoUploading}
+                      title={profile.photoUrl ? "Change photo" : "Add a photo"}
+                      style={{flexShrink:0,position:"relative",background:"none",border:"none",padding:0,cursor:photoUploading?"wait":"pointer",borderRadius:"50%"}}
+                    >
+                      {profile.photoUrl
+                        ? <img src={profile.photoUrl} alt="" style={{width:72,height:72,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8",display:"block"}} />
+                        : <div style={{width:72,height:72,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,border:"2px dashed rgba(255,255,255,.6)"}}>{avatarInitial}</div>
+                      }
+                      <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:"50%",background:"#7FBFB8",border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
+                        {photoUploading ? <span className="spin" style={{width:11,height:11,borderWidth:2}}></span> : "📷"}
+                      </div>
+                    </button>
+                    {/* Greeting + status */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <h1 className="pg" style={{marginBottom:4}}>{greeting}</h1>
+                      {newRolesCount > 0 && (
+                        <div style={{fontSize:14,color:"#5EA8A1",fontWeight:600,marginBottom:4}}>
+                          {newRolesCount} new role match{newRolesCount === 1 ? "" : "es"} since your last visit.
+                        </div>
                       )}
-                      {profile.rate ? (
-                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>💰 ${profile.rate}/hr</span>
-                      ) : (
-                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>💰 Add your rate</span>
-                      )}
-                      {(profile.discPrimary || profile.discSecondary) ? (
-                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>🎯 DISC: {[profile.discPrimary, profile.discSecondary].filter(Boolean).join(" / ")}</span>
-                      ) : (
-                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>🎯 Add your DISC</span>
-                      )}
-                      {profile.vark ? (
-                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>📚 VARK: {profile.vark}</span>
-                      ) : (
-                        <span style={{color:"#A0A0A0",fontStyle:"italic"}}>📚 Add your VARK</span>
+                      <div style={{fontSize:13,color:"#6B6B6B",display:"flex",flexWrap:"wrap",gap:"4px 12px",alignItems:"center"}}>
+                        <span>{email}</span>
+                        {(profile.city || profile.state) && <span>📍 {[profile.city, profile.state].filter(Boolean).join(", ")}</span>}
+                        {profile.discPrimary && <span style={{color:"#1F5C58",fontWeight:600}}>DISC: {profile.discPrimary}{profile.discSecondary ? ` / ${profile.discSecondary}` : ""}</span>}
+                        {profile.vark && <span style={{color:"#4A4A4A",fontWeight:600}}>VARK: {profile.vark}</span>}
+                      </div>
+                      {!profile.photoUrl && (
+                        <div style={{fontSize:12,color:"#5EA8A1",marginTop:8,fontStyle:"italic"}}>
+                          Tap your photo to add a headshot — your candidate card looks more personal with a face.
+                        </div>
                       )}
                     </div>
-                    <button className="btn-ts" style={{padding:"6px 14px",fontSize:11}} onClick={() => {
-                      setInfoDraft({
-                        city: profile.city || "",
-                        state: profile.state || "",
-                        rate: profile.rate || "",
-                        facts: profile.facts || "",
-                        discPrimary: profile.discPrimary || "",
-                        discSecondary: profile.discSecondary || "",
-                        vark: profile.vark || "",
-                      });
-                      setInfoEditing(true);
-                    }}>Edit Info</button>
+                    {/* Action chips */}
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}}>
+                      <button
+                        type="button"
+                        className="btn btn-g btn-sm"
+                        onClick={() => { reset(); setEMode("resume"); setTab("profile"); }}
+                      >📄 Update Resume</button>
+                    </div>
                   </div>
-                ) : (
-                  <div>
-                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:14}}>
-                      Edit your info
+
+                  {/* Row 2: Profile Strength */}
+                  <div style={{borderTop:"1px solid #F1F2F2",paddingTop:16,marginBottom:14}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{background:s.tier.color,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20}}>
+                          {s.tier.label}
+                        </span>
+                        <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:15,color:"#1A1A1A"}}>
+                          Profile Strength · {s.pct}%
+                        </span>
+                      </div>
+                      <span style={{fontSize:12,color:"#6B6B6B"}}>{s.checks.filter(c => c.done).length} of {s.checks.length}</span>
                     </div>
-                    <div style={{display:"grid",gap:14,marginBottom:18}}>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                        <div>
-                          <label className="fl">City</label>
-                          <input className="fi" placeholder="Austin" value={infoDraft.city} onChange={e => setInfoDraft(d => ({...d, city:e.target.value}))} />
-                        </div>
-                        <div>
-                          <label className="fl">State</label>
-                          <input className="fi" placeholder="Texas" value={infoDraft.state} onChange={e => setInfoDraft(d => ({...d, state:e.target.value}))} />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="fl">Preferred Hourly Rate</label>
-                        <div className="rate-wrap">
-                          <span className="rate-fix rate-l">$</span>
-                          <input className="rate-in" type="number" min="0" placeholder="65" value={infoDraft.rate} onChange={e => setInfoDraft(d => ({...d, rate:e.target.value}))} />
-                          <span className="rate-fix rate-r">/hr</span>
-                        </div>
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                        <div>
-                          <label className="fl">DISC — Primary</label>
-                          <select className="fi" value={infoDraft.discPrimary} onChange={e => setInfoDraft(d => ({...d, discPrimary:e.target.value}))}>
-                            <option value="">Not set</option>
-                            {DISC_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="fl">DISC — Secondary</label>
-                          <select className="fi" value={infoDraft.discSecondary} onChange={e => setInfoDraft(d => ({...d, discSecondary:e.target.value}))}>
-                            <option value="">Not set</option>
-                            {DISC_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="fl">VARK Learning Style</label>
-                        <select className="fi" value={infoDraft.vark} onChange={e => setInfoDraft(d => ({...d, vark:e.target.value}))}>
-                          <option value="">Not set</option>
-                          {VARK_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="fl">Facts &amp; Hobbies</label>
-                        <textarea className="fi" placeholder="Share a little about yourself..." value={infoDraft.facts} onChange={e => setInfoDraft(d => ({...d, facts:e.target.value}))} style={{minHeight:90,resize:"vertical",lineHeight:1.6}} />
-                      </div>
+                    <div style={{height:8,background:"#F1F2F2",borderRadius:999,overflow:"hidden",marginBottom:10}}>
+                      <div style={{height:"100%",width:`${s.pct}%`,background:s.tier.color,borderRadius:999,transition:"width .3s ease-out"}} />
                     </div>
-                    <div style={{display:"flex",gap:10}}>
-                      <button className="btn btn-p" style={{width:"auto"}} disabled={infoSaving} onClick={async () => {
-                        setInfoSaving(true);
-                        try {
-                          const next = {
-                            ...profile,
-                            city: infoDraft.city,
-                            state: infoDraft.state,
-                            rate: infoDraft.rate,
-                            facts: infoDraft.facts,
-                            discPrimary:   infoDraft.discPrimary   || null,
-                            discSecondary: infoDraft.discSecondary || null,
-                            vark:          infoDraft.vark          || null,
-                          };
-                          await saveProfile(obm.id, next);
-                          setProfile(next);
-                          setInfoEditing(false);
-                        } catch (e) {
-                          setErr("Save failed: " + e.message);
-                        } finally {
-                          setInfoSaving(false);
-                        }
-                      }}>
-                        {infoSaving ? <><span className="spin"></span> Saving...</> : "Save"}
+                    <div style={{fontSize:13,color:"#4A4A4A",lineHeight:1.5,marginBottom: next ? 10 : 0}}>{s.tier.message}</div>
+                    {next && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTab("profile");
+                          if (next.section === "photo")     { uploadPhoto(); return; }
+                          if (next.section === "spotlight") { setTab("spotlight"); return; }
+                          if (next.section === "info" || next.section === "details") { startCardEdit("details"); return; }
+                          // skills
+                          startCardEdit("skills");
+                        }}
+                        style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",background:"#F8FFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:8,padding:"10px 14px",cursor:"pointer",fontSize:14,color:"#1A1A1A"}}
+                      >
+                        <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1"}}>Next</span>
+                        <span style={{flex:1}}>{next.action}</span>
+                        <span style={{color:"#A0A0A0"}}>→</span>
                       </button>
-                      <button className="btn btn-g" style={{width:"auto"}} onClick={() => setInfoEditing(false)}>Cancel</button>
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
+
+                  {/* Row 3: Badges */}
+                  <div style={{borderTop:"1px solid #F1F2F2",paddingTop:14}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                      <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0"}}>
+                        🏆 Achievements · {earned.size} of {BADGES.length}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowBadgeInfo(b => !b)}
+                        style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:"#5EA8A1",fontFamily:"Raleway,sans-serif",fontWeight:600,letterSpacing:".04em",textDecoration:"underline"}}
+                      >
+                        {showBadgeInfo ? "Hide details" : "About these badges"}
+                      </button>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {BADGES.map(b => {
+                        const on = earned.has(b.id);
+                        const active = selectedBadgeId === b.id;
+                        return (
+                          <button
+                            key={b.id}
+                            type="button"
+                            title={b.desc}
+                            onClick={() => setSelectedBadgeId(active ? null : b.id)}
+                            style={{
+                              display:"inline-flex",alignItems:"center",gap:6,
+                              padding:"4px 10px 4px 6px",borderRadius:20,
+                              background: on ? "#E8F4F3" : "#F8F8F8",
+                              border: `1px solid ${active ? "#5EA8A1" : (on ? "rgba(127,191,184,.5)" : "#E0E1E1")}`,
+                              boxShadow: active ? "0 0 0 2px rgba(127,191,184,.25)" : "none",
+                              opacity: on ? 1 : 0.7,
+                              cursor:"pointer",fontFamily:"inherit",transition:"all .15s",
+                            }}
+                          >
+                            <span style={{fontSize:14,filter: on ? "none" : "grayscale(80%)",lineHeight:1}}>{b.emoji}</span>
+                            <span style={{fontSize:11,fontWeight:600,fontFamily:"Raleway,sans-serif",color: on ? "#1F5C58" : "#6B6B6B"}}>{b.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedBadgeId && (() => {
+                      const b = BADGES.find(x => x.id === selectedBadgeId);
+                      if (!b) return null;
+                      const on = earned.has(b.id);
+                      return (
+                        <div style={{marginTop:10,padding:"10px 14px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
+                          <span style={{fontSize:16,flexShrink:0,filter:on?"none":"grayscale(80%)"}}>{b.emoji}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div>
+                              <strong style={{fontFamily:"Raleway,sans-serif",color:"#1A1A1A"}}>{b.name}</strong>
+                              <span style={{color:on?"#5EA8A1":"#A0A0A0",fontWeight:600,marginLeft:8,fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>{on ? "✓ Earned" : "Locked"}</span>
+                            </div>
+                            <div style={{color:"#6B6B6B",marginTop:2}}>{b.desc}</div>
+                          </div>
+                          <button type="button" onClick={() => setSelectedBadgeId(null)} aria-label="Close" style={{background:"none",border:"none",padding:"2px 6px",cursor:"pointer",color:"#A0A0A0",fontSize:16,lineHeight:1}}>×</button>
+                        </div>
+                      );
+                    })()}
+                    {showBadgeInfo && (
+                      <div style={{marginTop:12,padding:"12px 14px",background:"#FAFAFA",border:"1px solid #E0E1E1",borderRadius:8}}>
+                        <div style={{display:"grid",gap:8}}>
+                          {BADGES.map(b => {
+                            const on = earned.has(b.id);
+                            return (
+                              <div key={b.id} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
+                                <span style={{fontSize:16,filter:on?"none":"grayscale(80%)",opacity:on?1:0.5,flexShrink:0}}>{b.emoji}</span>
+                                <div>
+                                  <strong style={{fontFamily:"Raleway,sans-serif",color:"#1A1A1A"}}>{b.name}</strong>
+                                  <span style={{color:on?"#5EA8A1":"#A0A0A0",fontWeight:600,marginLeft:8,fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>{on ? "✓ Earned" : "Locked"}</span>
+                                  <div style={{color:"#6B6B6B",marginTop:2}}>{b.desc}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
 
             <div className="tabs">
               <button className={`tab ${tab==="profile"?"on":""}`} onClick={() => setTab("profile")}>My Profile</button>
@@ -1823,244 +1905,12 @@ export default function App() {
 
             {tab === "profile" && <>
 
-              {/* Profile Strength + Next Steps */}
-              {(() => {
-                const s = computeProfileStrength(profile, spotlight);
-                return (
-                  <div style={{background:"#fff",border:"1px solid #E0E1E1",borderRadius:10,padding:"22px 24px",marginBottom:20}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:10}}>
-                      <div style={{display:"flex",alignItems:"center",gap:12}}>
-                        <span style={{background:s.tier.color,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20}}>
-                          {s.tier.label}
-                        </span>
-                        <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:16,color:"#1A1A1A"}}>
-                          Profile Strength · {s.pct}%
-                        </span>
-                      </div>
-                      <span style={{fontSize:13,color:"#6B6B6B"}}>
-                        {s.checks.filter(c => c.done).length} of {s.checks.length} signals
-                      </span>
-                    </div>
-                    <div style={{height:8,background:"#F1F2F2",borderRadius:999,overflow:"hidden",marginBottom:12}}>
-                      <div style={{height:"100%",width:`${s.pct}%`,background:s.tier.color,borderRadius:999,transition:"width .3s ease-out"}} />
-                    </div>
-                    <div style={{fontSize:14,color:"#4A4A4A",lineHeight:1.55,marginBottom:s.nextSteps.length?16:0}}>{s.tier.message}</div>
-                    {s.nextSteps.length > 0 && (
-                      <div style={{borderTop:"1px solid #F1F2F2",paddingTop:14}}>
-                        <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#5EA8A1",marginBottom:10}}>
-                          Next steps
-                        </div>
-                        <ul style={{margin:0,padding:0,listStyle:"none",display:"grid",gap:8}}>
-                          {s.nextSteps.map(step => (
-                            <li key={step.id}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (step.section === "photo")     { uploadPhoto(); return; }
-                                  if (step.section === "spotlight") { setTab("spotlight"); return; }
-                                  if (step.section === "info") {
-                                    setInfoDraft({
-                                      city: profile.city || "", state: profile.state || "", rate: profile.rate || "",
-                                      facts: profile.facts || "", discPrimary: profile.discPrimary || "",
-                                      discSecondary: profile.discSecondary || "", vark: profile.vark || "",
-                                    });
-                                    setInfoEditing(true);
-                                    window.scrollTo({ top: 0, behavior: "smooth" });
-                                    return;
-                                  }
-                                  // skills
-                                  setEditing(true); setEMode("manual");
-                                }}
-                                style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",background:"#F8FFFE",border:"1px solid rgba(127,191,184,.25)",borderRadius:8,padding:"10px 14px",cursor:"pointer",fontSize:14,color:"#1A1A1A",transition:"all .15s"}}
-                                onMouseOver={e => e.currentTarget.style.borderColor = "#7FBFB8"}
-                                onMouseOut={e => e.currentTarget.style.borderColor = "rgba(127,191,184,.25)"}
-                              >
-                                <span style={{color:"#7FBFB8",fontSize:16,lineHeight:1}}>○</span>
-                                <span style={{flex:1}}>{step.action}</span>
-                                <span style={{color:"#A0A0A0",fontSize:14}}>→</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Profile summary bar — avatar + name + badges */}
-              <div style={{display:"flex",alignItems:"flex-start",gap:20,padding:"20px 24px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:10,marginBottom:24}}>
-                {/* Avatar column — click to upload, with prompt copy below */}
-                <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-                  <button
-                    type="button"
-                    onClick={uploadPhoto}
-                    disabled={photoUploading}
-                    title={profile.photoUrl ? "Change photo" : "Add a photo"}
-                    style={{position:"relative",background:"none",border:"none",padding:0,cursor:photoUploading?"wait":"pointer",borderRadius:"50%"}}
-                  >
-                    {profile.photoUrl
-                      ? <img src={profile.photoUrl} alt="" style={{width:72,height:72,borderRadius:"50%",objectFit:"cover",border:"2px solid #7FBFB8",display:"block"}} />
-                      : <div style={{width:72,height:72,borderRadius:"50%",background:"#7FBFB8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,color:"#fff",fontFamily:"Raleway,sans-serif",fontWeight:700,border:"2px dashed rgba(255,255,255,.65)"}}>
-                          {avatarInitial}
-                        </div>
-                    }
-                    <div style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:"50%",background:"#7FBFB8",border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
-                      {photoUploading ? <span className="spin" style={{width:11,height:11,borderWidth:2}}></span> : "📷"}
-                    </div>
-                  </button>
-                  {!profile.photoUrl && (
-                    <button
-                      type="button"
-                      onClick={uploadPhoto}
-                      disabled={photoUploading}
-                      style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:"#5EA8A1",fontWeight:600,fontFamily:"Raleway,sans-serif",letterSpacing:".04em",textDecoration:"underline"}}
-                    >
-                      Add a headshot
-                    </button>
-                  )}
-                </div>
-                {/* Info */}
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:18,color:"#1A1A1A",marginBottom:4}}>
-                    {displayName}
-                  </div>
-                  {(profile.city || profile.state) && (
-                    <div style={{fontSize:13,color:"#6B6B6B",marginBottom:10}}>
-                      📍 {[profile.city, profile.state].filter(Boolean).join(", ")}
-                    </div>
-                  )}
-                  {!profile.photoUrl && (
-                    <div style={{fontSize:13,color:"#5EA8A1",lineHeight:1.5,marginBottom:10,fontStyle:"italic"}}>
-                      Tap your photo to add a headshot — it makes your candidate card more personal when Prowess introduces you.
-                    </div>
-                  )}
-                  {/* Badges */}
-                  {(() => {
-                    const earned = earnedBadgeIds(profile, spotlight);
-                    return (
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                          <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0"}}>
-                            Achievements · {earned.size}/{BADGES.length}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setShowBadgeInfo(s => !s)}
-                            style={{background:"none",border:"none",padding:0,cursor:"pointer",fontSize:11,color:"#5EA8A1",fontFamily:"Raleway,sans-serif",fontWeight:600,letterSpacing:".04em",textDecoration:"underline"}}
-                          >
-                            {showBadgeInfo ? "Hide details" : "About these badges"}
-                          </button>
-                        </div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                          {BADGES.map(b => {
-                            const on = earned.has(b.id);
-                            const active = selectedBadgeId === b.id;
-                            return (
-                              <button
-                                key={b.id}
-                                type="button"
-                                title={b.desc}
-                                onClick={() => setSelectedBadgeId(active ? null : b.id)}
-                                style={{
-                                  display:"inline-flex",alignItems:"center",gap:6,
-                                  padding:"4px 10px 4px 6px",borderRadius:20,
-                                  background: on ? "#E8F4F3" : "#F8F8F8",
-                                  border: `1px solid ${active ? "#5EA8A1" : (on ? "rgba(127,191,184,.5)" : "#E0E1E1")}`,
-                                  boxShadow: active ? "0 0 0 2px rgba(127,191,184,.25)" : "none",
-                                  opacity: on ? 1 : 0.7,
-                                  cursor:"pointer",
-                                  fontFamily:"inherit",
-                                  transition:"all .15s",
-                                }}
-                              >
-                                <span style={{fontSize:14,filter: on ? "none" : "grayscale(80%)",lineHeight:1}}>{b.emoji}</span>
-                                <span style={{fontSize:11,fontWeight:600,fontFamily:"Raleway,sans-serif",color: on ? "#1F5C58" : "#6B6B6B"}}>{b.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {selectedBadgeId && (() => {
-                          const b = BADGES.find(x => x.id === selectedBadgeId);
-                          if (!b) return null;
-                          const on = earned.has(b.id);
-                          return (
-                            <div style={{marginTop:10,padding:"10px 14px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
-                              <span style={{fontSize:16,flexShrink:0,filter:on?"none":"grayscale(80%)"}}>{b.emoji}</span>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div>
-                                  <strong style={{fontFamily:"Raleway,sans-serif",color:"#1A1A1A"}}>{b.name}</strong>
-                                  <span style={{color:on?"#5EA8A1":"#A0A0A0",fontWeight:600,marginLeft:8,fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>
-                                    {on ? "✓ Earned" : "Locked"}
-                                  </span>
-                                </div>
-                                <div style={{color:"#6B6B6B",marginTop:2}}>{b.desc}</div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedBadgeId(null)}
-                                aria-label="Close"
-                                style={{background:"none",border:"none",padding:"2px 6px",cursor:"pointer",color:"#A0A0A0",fontSize:16,lineHeight:1}}
-                              >×</button>
-                            </div>
-                          );
-                        })()}
-                        {showBadgeInfo && (
-                          <div style={{marginTop:12,padding:"12px 14px",background:"#FAFAFA",border:"1px solid #E0E1E1",borderRadius:8}}>
-                            <div style={{display:"grid",gap:8}}>
-                              {BADGES.map(b => {
-                                const on = earned.has(b.id);
-                                return (
-                                  <div key={b.id} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
-                                    <span style={{fontSize:16,filter:on?"none":"grayscale(80%)",opacity:on?1:0.5,flexShrink:0}}>{b.emoji}</span>
-                                    <div>
-                                      <strong style={{fontFamily:"Raleway,sans-serif",color:"#1A1A1A"}}>{b.name}</strong>
-                                      <span style={{color:on?"#5EA8A1":"#A0A0A0",fontWeight:600,marginLeft:8,fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>
-                                        {on ? "✓ Earned" : "Locked"}
-                                      </span>
-                                      <div style={{color:"#6B6B6B",marginTop:2}}>{b.desc}</div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Top button */}
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
-                {!editing
-                  ? <button className="btn btn-g btn-sm" onClick={() => { setEditing(true); setEMode(null); }}>Edit Profile</button>
-                  : eMode===null ? <button className="btn btn-g btn-sm" onClick={reset}>Cancel</button>
-                  : eMode==="review" ? <button className="btn btn-g btn-sm" onClick={() => { setEMode("resume"); setSug(null); }}>← Back</button>
-                  : <button className="btn btn-g btn-sm" onClick={() => setEMode(null)}>← Back</button>
-                }
-              </div>
-
-              {/* Mode chooser */}
-              {editing && eMode===null && <div className="card" style={{marginBottom:24}}>
-                <div className="ch"><span className="ct">How would you like to update your profile?</span></div>
-                <div className="mode-grid">
-                  {[["resume","📄","Let Prowess Scout Read Your Resume","Prowess Scout reads your resume and suggests skills to add"],
-                    ["manual","✏️","Edit Manually","Browse by category, add or remove skills individually"]
-                  ].map(([m,ic,ti,de]) => (
-                    <button key={m} className="mode-btn" onClick={() => setEMode(m)}>
-                      <div className="mode-icon">{ic}</div>
-                      <div className="mode-title">{ti}</div>
-                      <div className="mode-desc">{de}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>}
-
               {/* Resume upload */}
-              {editing && eMode==="resume" && <div className="card" style={{marginBottom:24}}>
-                <div className="ch"><span className="ct">Let Prowess Scout Read Your Resume</span></div>
+              {eMode==="resume" && <div className="card" style={{marginBottom:24}}>
+                <div className="ch">
+                  <span className="ct">Let Prowess Scout Read Your Resume</span>
+                  <button className="btn btn-g btn-sm" onClick={() => setEMode(null)}>Cancel</button>
+                </div>
                 {parsing
                   ? <ParsingProgress complete={parseComplete} />
                   : <label>
@@ -2074,31 +1924,25 @@ export default function App() {
               </div>}
 
               {/* Suggestion review */}
-              {editing && eMode==="review" && sug && <SugReview sug={sug} step={sugStep} onStepChange={setSugStep} onAdd={addToExisting} onReplace={replaceAll} onManual={() => { setSug(null); setSugStep("found"); setEMode("manual"); }} onReupload={() => { setSug(null); setSugStep("found"); setEMode("resume"); }} />}
+              {eMode==="review" && sug && <SugReview sug={sug} step={sugStep} onStepChange={setSugStep} onAdd={addToExisting} onReplace={replaceAll} onManual={() => { setSug(null); setSugStep("found"); setEMode(null); }} onReupload={() => { setSug(null); setSugStep("found"); setEMode("resume"); }} />}
 
-              {/* Edit legend */}
-              {ed && <div className="legend">
-                <div className="li"><span style={{display:"inline-block",background:"#7FBFB8",border:"1px solid #5EA8A1",color:"#fff",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:600}}>Your skill ✕</span> tap ✕ to remove</div>
-                <div className="li"><span style={{display:"inline-block",background:"#fff",border:"1.5px dashed #7FBFB8",color:"#5EA8A1",padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:500}}>+ Available</span> tap to add</div>
-              </div>}
-
-              {/* Skills sections — hide during review */}
-              {eMode !== "review" && <>
-                <div className={`card ${ed?"ed":""}`}>
-                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Primary Skills</span></div>
-                  <SkillPicker label="Primary Skills" selected={profile.primarySkills} options={pOpts} onChange={v => setProfile(p => ({...p, primarySkills:v}))} editing={ed} catMap={SKILL_CATS} />
+              {/* Skills + Industries + Availability + Details cards — only when not in resume/review */}
+              {!eMode && <>
+                <div className={`card ${isEditing("primary")?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${isEditing("primary")?"on":""}`}>Primary Skills</span>{cardActions("primary")}</div>
+                  <SkillPicker label="Primary Skills" selected={profile.primarySkills} options={pOpts} onChange={v => setProfile(p => ({...p, primarySkills:v}))} editing={isEditing("primary")} catMap={SKILL_CATS} />
                 </div>
-                <div className={`card ${ed?"ed":""}`}>
-                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Secondary Skills</span></div>
-                  <SkillPicker label="Secondary Skills" selected={profile.secondarySkills} options={sOpts} onChange={v => setProfile(p => ({...p, secondarySkills:v}))} editing={ed} catMap={SKILL_CATS} />
+                <div className={`card ${isEditing("secondary")?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${isEditing("secondary")?"on":""}`}>Secondary Skills</span>{cardActions("secondary")}</div>
+                  <SkillPicker label="Secondary Skills" selected={profile.secondarySkills} options={sOpts} onChange={v => setProfile(p => ({...p, secondarySkills:v}))} editing={isEditing("secondary")} catMap={SKILL_CATS} />
                 </div>
-                <div className={`card ${ed?"ed":""}`}>
-                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Technology Skills</span></div>
-                  <SkillPicker label="Technology Skills" selected={profile.techSkills} options={tOpts} onChange={v => setProfile(p => ({...p, techSkills:v}))} editing={ed} catMap={TECH_CATS} />
+                <div className={`card ${isEditing("tech")?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${isEditing("tech")?"on":""}`}>Technology Skills</span>{cardActions("tech")}</div>
+                  <SkillPicker label="Technology Skills" selected={profile.techSkills} options={tOpts} onChange={v => setProfile(p => ({...p, techSkills:v}))} editing={isEditing("tech")} catMap={TECH_CATS} />
                 </div>
-                <div className={`card ${ed?"ed":""}`}>
-                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Industry Experience</span></div>
-                  {ed ? (
+                <div className={`card ${isEditing("industries")?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${isEditing("industries")?"on":""}`}>Industry Experience</span>{cardActions("industries")}</div>
+                  {isEditing("industries") ? (
                     <div>
                       <div className="tags" style={{marginBottom: profile.industries.length ? 12 : 0}}>
                         {profile.industries.map(ind => (
@@ -2131,9 +1975,9 @@ export default function App() {
                   )}
                 </div>
 
-                <div className={`card ${ed?"ed":""}`}>
-                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Availability</span></div>
-                  {ed
+                <div className={`card ${isEditing("availability")?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${isEditing("availability")?"on":""}`}>Availability</span>{cardActions("availability")}</div>
+                  {isEditing("availability")
                     ? <div className="tags">{hours.map(h => (
                         <button key={h} className={profile.hours.includes(h)?"tag-e":"opt"} onClick={() => setProfile(p => ({...p, hours: p.hours.includes(h) ? p.hours.filter(x=>x!==h) : [...p.hours,h]}))} style={{cursor:"pointer",border: profile.hours.includes(h)?"none":undefined}}>
                           {profile.hours.includes(h) ? <><span>✓ {h}</span><button className="del" onClick={e => { e.stopPropagation(); setProfile(p => ({...p, hours: p.hours.filter(x=>x!==h)})); }}>✕</button></> : `+ ${h}`}
@@ -2142,9 +1986,9 @@ export default function App() {
                     : <div className="tags">{profile.hours.length ? profile.hours.map(h => <span key={h} className="tag">{h}</span>) : <span className="empty">Not set</span>}</div>
                   }
                 </div>
-                <div className={`card ${ed?"ed":""}`}>
-                  <div className="ch"><span className={`ct ${ed?"on":""}`}>Details</span></div>
-                  {ed ? (
+                <div className={`card ${isEditing("details")?"ed":""}`}>
+                  <div className="ch"><span className={`ct ${isEditing("details")?"on":""}`}>Details</span>{cardActions("details")}</div>
+                  {isEditing("details") ? (
                     <div style={{display:"grid",gap:16}}>
                       {/* Profile photo */}
                       <div>
@@ -2432,13 +2276,12 @@ export default function App() {
           </div>}
         </main>
 
-        {ed && <div className="save-bar">
-          {saved && <span className="ok">✓ Profile saved</span>}
-          <button className="btn btn-g" onClick={reset}>Cancel</button>
-          <button className="btn btn-p" style={{width:"auto"}} onClick={save} disabled={saving}>
-            {saving ? <><span className="spin"></span> Saving...</> : "Save Changes"}
-          </button>
-        </div>}
+        {/* Profile-wide save toast (resume merge / mass actions) */}
+        {saved && !spotlightEditing && (
+          <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#1A1A1A",color:"#fff",padding:"10px 20px",borderRadius:24,fontSize:14,fontWeight:600,fontFamily:"Raleway,sans-serif",boxShadow:"0 8px 24px rgba(0,0,0,.18)",zIndex:99}}>
+            ✓ Profile saved
+          </div>
+        )}
 
         {spotlightEditing && <div className="save-bar">
           <button className="btn btn-g" onClick={() => setSpotlightEditing(false)}>Cancel</button>
