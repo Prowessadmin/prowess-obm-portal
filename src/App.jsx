@@ -1007,6 +1007,7 @@ export default function App() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [newRolesCount, setNewRolesCount] = useState(0);
   const [showBadgeInfo, setShowBadgeInfo] = useState(false);
+  const [selectedBadgeId, setSelectedBadgeId] = useState(null);
 
   async function uploadPhoto() {
     if (!obm) return;
@@ -1877,24 +1878,56 @@ export default function App() {
                         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                           {BADGES.map(b => {
                             const on = earned.has(b.id);
+                            const active = selectedBadgeId === b.id;
                             return (
-                              <div
+                              <button
                                 key={b.id}
+                                type="button"
                                 title={b.desc}
+                                onClick={() => setSelectedBadgeId(active ? null : b.id)}
                                 style={{
                                   display:"inline-flex",alignItems:"center",gap:6,
                                   padding:"4px 10px 4px 6px",borderRadius:20,
                                   background: on ? "#E8F4F3" : "#F8F8F8",
-                                  border: `1px solid ${on ? "rgba(127,191,184,.5)" : "#E0E1E1"}`,
+                                  border: `1px solid ${active ? "#5EA8A1" : (on ? "rgba(127,191,184,.5)" : "#E0E1E1")}`,
+                                  boxShadow: active ? "0 0 0 2px rgba(127,191,184,.25)" : "none",
                                   opacity: on ? 1 : 0.7,
+                                  cursor:"pointer",
+                                  fontFamily:"inherit",
+                                  transition:"all .15s",
                                 }}
                               >
                                 <span style={{fontSize:14,filter: on ? "none" : "grayscale(80%)",lineHeight:1}}>{b.emoji}</span>
                                 <span style={{fontSize:11,fontWeight:600,fontFamily:"Raleway,sans-serif",color: on ? "#1F5C58" : "#6B6B6B"}}>{b.name}</span>
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
+                        {selectedBadgeId && (() => {
+                          const b = BADGES.find(x => x.id === selectedBadgeId);
+                          if (!b) return null;
+                          const on = earned.has(b.id);
+                          return (
+                            <div style={{marginTop:10,padding:"10px 14px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.3)",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
+                              <span style={{fontSize:16,flexShrink:0,filter:on?"none":"grayscale(80%)"}}>{b.emoji}</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div>
+                                  <strong style={{fontFamily:"Raleway,sans-serif",color:"#1A1A1A"}}>{b.name}</strong>
+                                  <span style={{color:on?"#5EA8A1":"#A0A0A0",fontWeight:600,marginLeft:8,fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>
+                                    {on ? "✓ Earned" : "Locked"}
+                                  </span>
+                                </div>
+                                <div style={{color:"#6B6B6B",marginTop:2}}>{b.desc}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBadgeId(null)}
+                                aria-label="Close"
+                                style={{background:"none",border:"none",padding:"2px 6px",cursor:"pointer",color:"#A0A0A0",fontSize:16,lineHeight:1}}
+                              >×</button>
+                            </div>
+                          );
+                        })()}
                         {showBadgeInfo && (
                           <div style={{marginTop:12,padding:"12px 14px",background:"#FAFAFA",border:"1px solid #E0E1E1",borderRadius:8}}>
                             <div style={{display:"grid",gap:8}}>
