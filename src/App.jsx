@@ -2112,6 +2112,17 @@ export default function App() {
                       Awaiting your response · {awaitingRoles.length}
                     </span>
                   </div>
+
+                  {/* TEMP DEBUG — fields on the first awaiting record so we can identify the role-name field */}
+                  <details style={{background:"rgba(255,255,255,.6)",border:"1px dashed rgba(176,125,42,.4)",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:11}}>
+                    <summary style={{cursor:"pointer",fontFamily:"ui-monospace,Menlo,Consolas,monospace",color:"#8A5E1A"}}>Debug: fields on this record (paste back to dev)</summary>
+                    <div style={{marginTop:8,fontFamily:"ui-monospace,Menlo,Consolas,monospace",color:"#1A1A1A",lineHeight:1.6}}>
+                      {Object.entries(awaitingRoles[0].fields).map(([k, v]) => (
+                        <div key={k}><strong>{k}:</strong> {Array.isArray(v) ? `Array(${v.length})` : String(v ?? "null").slice(0, 80)}</div>
+                      ))}
+                    </div>
+                  </details>
+
                   <p style={{fontSize:14,color:"#1A1A1A",lineHeight:1.55,marginBottom:14}}>
                     Prowess emailed you about {awaitingRoles.length === 1 ? "this role" : "these roles"}. Tap <strong>Apply</strong> to respond directly here, or reply to the email — either way works.
                   </p>
