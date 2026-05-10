@@ -49,7 +49,7 @@ const BADGES = [
   { id: "industry",  emoji: "🏢", name: "Industry Insider", desc: "Add 3 or more industries" },
   { id: "tech",      emoji: "🛠️", name: "Tech Stack Pro",   desc: "Add 5 or more tech skills" },
   { id: "story",     emoji: "📖", name: "Storyteller",      desc: "Fill in Who You Are and Greatest Achievement on your Spotlight" },
-  { id: "spotlight", emoji: "✨", name: "Spotlight Star",   desc: "Complete every Spotlight field" },
+  { id: "spotlight", emoji: "🏆", name: "Spotlight Star",   desc: "Complete every Spotlight field" },
 ];
 
 function spotlightAllFilled(spotlight) {
@@ -1861,7 +1861,7 @@ export default function App() {
                   <div style={{borderTop:"1px solid #F1F2F2",paddingTop:14}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                       <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0"}}>
-                        🏆 Achievements · {earned.size} of {BADGES.length}
+                        ✨ Achievements · {earned.size} of {BADGES.length}
                       </div>
                       <button
                         type="button"
