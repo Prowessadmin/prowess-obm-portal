@@ -1861,7 +1861,7 @@ export default function App() {
                   <div style={{borderTop:"1px solid #F1F2F2",paddingTop:14}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                       <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:11,letterSpacing:".12em",textTransform:"uppercase",color:"#A0A0A0"}}>
-                        ✨ Achievements · {earned.size} of {BADGES.length}
+                        ⭐ Achievements · {earned.size} of {BADGES.length}
                       </div>
                       <button
                         type="button"
