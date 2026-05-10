@@ -213,21 +213,26 @@ async function findByEmail(email) {
 }
 
 async function getMatches(pmId) {
-  // Fetch response-yes rows server-side, then filter client-side by the PM Profile linked-field array.
-  // (We can't filter by record ID in the Airtable formula — ARRAYJOIN of a linked field returns the
-  // primary-field text of the linked records, not record IDs, so FIND can't see the ID.)
-  const formula = `LOWER(TRIM({Application status})) = "response yes"`;
+  // Pull both response-yes and awaiting-response rows server-side, then filter client-side by the
+  // PM Profile linked-field array. (Airtable's ARRAYJOIN on a linked field returns primary-field
+  // text not record IDs, so we can't filter by record ID in the formula.)
+  const formula = `OR(
+    LOWER(TRIM({Application status})) = "response yes",
+    LOWER(TRIM({Application status})) = "awaiting response"
+  )`;
   const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc&maxRecords=200`);
   const all = d.records || [];
-  const records = all.filter(r => {
-    const linked = r.fields["PM Profile"];
-    return Array.isArray(linked) && linked.includes(pmId);
+  const linked = all.filter(r => {
+    const arr = r.fields["PM Profile"];
+    return Array.isArray(arr) && arr.includes(pmId);
   });
+  const statusOf = r => String(r.fields["Application status"] || "").trim().toLowerCase();
+  const responseYes = linked.filter(r => statusOf(r) === "response yes");
+  const awaiting    = linked.filter(r => statusOf(r) === "awaiting response");
 
   let debugLinked = null;
-  if (!records.length) {
-    // Pull a wider sample (any status) and find ones linked to this PM Profile, so we can show what's in Airtable
+  if (!responseYes.length && !awaiting.length) {
     try {
       const dbg = await atFetch(`/${TBL_MATCHING}?maxRecords=200&sort[0][field]=Created&sort[0][direction]=desc`);
       debugLinked = (dbg.records || [])
@@ -243,7 +248,7 @@ async function getMatches(pmId) {
       console.warn("[Matches Debug] Could not fetch debug rows:", e);
     }
   }
-  return { records, debugLinked };
+  return { responseYes, awaiting, debugLinked };
 }
 
 async function getSpotlight(email) {
@@ -925,6 +930,7 @@ export default function App() {
   const [email, setEmail]   = useState("");
   const [obm, setObm]       = useState(null);
   const [roles, setRoles]   = useState([]);
+  const [awaitingRoles, setAwaitingRoles] = useState([]);
   const [err, setErr]       = useState("");
   const [notFound, setNotFound] = useState(false);
   const [tab, setTab]       = useState("profile");
@@ -1053,8 +1059,9 @@ export default function App() {
         getMatches(rec.id),
         getSpotlight(email.toLowerCase().trim()).catch(() => null),
       ]);
-      const m = matchResult.records;
+      const m = matchResult.responseYes;
       setRoles(m);
+      setAwaitingRoles(matchResult.awaiting);
       setMatchesDebug(matchResult.debugLinked);
       setSpotlight(spot);
       setSpotlightLoaded(true);
@@ -1566,7 +1573,15 @@ export default function App() {
 
             <div className="tabs">
               <button className={`tab ${tab==="profile"?"on":""}`} onClick={() => setTab("profile")}>My Profile</button>
-              <button className={`tab ${tab==="roles"?"on":""}`} onClick={() => setTab("roles")}>My Roles {roles.length>0&&`(${roles.length})`}</button>
+              <button className={`tab ${tab==="roles"?"on":""}`} onClick={() => setTab("roles")}>
+                My Roles
+                {awaitingRoles.length > 0 && (
+                  <span title={`${awaitingRoles.length} role${awaitingRoles.length===1?"":"s"} awaiting your response`} style={{marginLeft:6,display:"inline-flex",alignItems:"center",gap:3,background:"#F59E0B",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,letterSpacing:".04em"}}>
+                    ⭐ {awaitingRoles.length}
+                  </span>
+                )}
+                {awaitingRoles.length === 0 && roles.length > 0 && ` (${roles.length})`}
+              </button>
               <button className={`tab ${tab==="spotlight"?"on":""}`} onClick={() => setTab("spotlight")}>My Spotlight ✨</button>
             </div>
 
@@ -1955,6 +1970,34 @@ export default function App() {
                 <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>How matching works</strong>
                 When a new role comes in, Prowess's algorithm scores every OBM and emails the top picks. The roles you've been picked for show up here — you don't need to apply or chase.
               </div>
+
+              {awaitingRoles.length > 0 && (
+                <div style={{background:"#FFF8EC",border:"1px solid rgba(245,158,11,.4)",borderRadius:10,padding:"18px 22px",marginBottom:24}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <span style={{fontSize:18}}>⭐</span>
+                    <span style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:14,color:"#8A5E1A",letterSpacing:".04em",textTransform:"uppercase"}}>
+                      Awaiting your response · {awaitingRoles.length}
+                    </span>
+                  </div>
+                  <p style={{fontSize:14,color:"#1A1A1A",lineHeight:1.55,marginBottom:14}}>
+                    Prowess emailed you about {awaitingRoles.length === 1 ? "this role" : "these roles"}. Check your inbox to express interest — once you reply yes, the role moves to your active matches below.
+                  </p>
+                  <div style={{display:"grid",gap:10}}>
+                    {awaitingRoles.map(r => {
+                      const f = r.fields;
+                      return (
+                        <div key={r.id} style={{background:"#fff",border:"1px solid rgba(245,158,11,.35)",borderRadius:8,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                          <div>
+                            <div className="rn">{f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
+                            <div className="rm">{f["Industry"]||""}{f[F_MATCH_SCORE]?` · ${f[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
+                          </div>
+                          <span className="badge b-w" style={{background:"#F59E0B",color:"#fff",border:"none"}}>Check Email</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {!roles.length && matchesDebug && matchesDebug.length > 0 && (
                 <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.4)",borderRadius:8,padding:"16px 20px",marginBottom:16,fontSize:13,lineHeight:1.55}}>
                   <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:6,color:"#8A5E1A"}}>
