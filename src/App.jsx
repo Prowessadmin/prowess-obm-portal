@@ -469,6 +469,21 @@ async function loadCloudinaryWidget() {
   });
 }
 
+// Direct Cloudinary upload (no widget) — used for the resume file alongside the parser
+async function uploadFileToCloudinary(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_PRESET);
+  // "auto" lets Cloudinary detect type so PDFs, docx, txt all work
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `Cloudinary ${res.status}`);
+  return { url: data.secure_url, filename: file.name };
+}
+
 function openCloudinaryAvatarWidget(onSuccess, onError) {
   return window.cloudinary.openUploadWidget({
     cloudName: CLOUDINARY_CLOUD,
@@ -1324,7 +1339,22 @@ export default function App() {
     try {
       const text = await extractText(file);
       if (text.length < 50) { setErr("Couldn't read this file — try a .txt or .docx version."); setParsing(false); return; }
-      const result = await parseResume(text, pOpts, sOpts, tOpts, indOpts);
+      // In parallel: parse resume for skills + upload the original file to Cloudinary
+      const [result, fileMeta] = await Promise.all([
+        parseResume(text, pOpts, sOpts, tOpts, indOpts),
+        uploadFileToCloudinary(file).catch(e => { console.warn("Resume file upload failed:", e); return null; }),
+      ]);
+      // If the file upload succeeded, save the URL to PM Profile's "OBM Resume" attachment field
+      if (fileMeta && obm) {
+        try {
+          await atFetch(`/${TBL_PM}/${obm.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ fields: { "OBM Resume": [{ url: fileMeta.url, filename: fileMeta.filename }] } }),
+          });
+        } catch (e) {
+          console.warn("Failed to save OBM Resume URL to Airtable:", e);
+        }
+      }
       setParseComplete(true);
       await new Promise(r => setTimeout(r, 500));
       setSug(result);
@@ -1786,7 +1816,7 @@ export default function App() {
                         type="button"
                         className="btn btn-g btn-sm"
                         onClick={() => { reset(); setEMode("resume"); setTab("profile"); }}
-                      >📄 Update Resume</button>
+                      >📄 Update with Resume</button>
                     </div>
                   </div>
 
@@ -1856,11 +1886,11 @@ export default function App() {
                               width:48,height:48,borderRadius:"50%",
                               display:"inline-flex",alignItems:"center",justifyContent:"center",
                               padding:0,
-                              background: on ? "linear-gradient(135deg,#FFE9B0,#F59E0B)" : "#F1F2F2",
-                              border: `2px solid ${active ? "#5EA8A1" : (on ? "#D97706" : "#E0E1E1")}`,
+                              background: on ? "linear-gradient(135deg,#FFF1F5,#FBCFE0)" : "#F1F2F2",
+                              border: `2px solid ${active ? "#5EA8A1" : (on ? "#F4A6BE" : "#E0E1E1")}`,
                               boxShadow: active
                                 ? "0 0 0 3px rgba(127,191,184,.3)"
-                                : on ? "0 2px 6px rgba(245,158,11,.25)" : "none",
+                                : on ? "0 2px 6px rgba(244,166,190,.35)" : "none",
                               opacity: on ? 1 : 0.55,
                               filter: on ? "none" : "grayscale(70%)",
                               cursor:"pointer",fontFamily:"inherit",transition:"transform .15s, box-shadow .15s",
