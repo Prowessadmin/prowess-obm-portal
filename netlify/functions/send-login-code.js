@@ -18,9 +18,9 @@ exports.handler = async (event) => {
   }
 
   const airtableKey = process.env.AIRTABLE_KEY;
-  const sendgridKey = process.env.SENDGRID_API_KEY;
+  const resendKey = process.env.RESEND_API_KEY;
   if (!airtableKey) return { statusCode: 500, headers, body: JSON.stringify({ error: "AIRTABLE_KEY not configured" }) };
-  if (!sendgridKey) return { statusCode: 500, headers, body: JSON.stringify({ error: "SENDGRID_API_KEY not configured" }) };
+  if (!resendKey) return { statusCode: 500, headers, body: JSON.stringify({ error: "RESEND_API_KEY not configured" }) };
 
   try {
     console.log("[send-login-code] invoked");
@@ -31,7 +31,7 @@ exports.handler = async (event) => {
     }
     const normalizedEmail = email.toLowerCase().trim();
     console.log("[send-login-code] email:", normalizedEmail);
-    console.log("[send-login-code] keys present — airtable:", !!airtableKey, "sendgrid:", !!sendgridKey, "sendgrid prefix:", sendgridKey?.slice(0, 4));
+    console.log("[send-login-code] keys present — airtable:", !!airtableKey, "resend:", !!resendKey, "resend prefix:", resendKey?.slice(0, 4));
 
     // 1. Look up PM Profile by email
     const filterFormula = `LOWER(TRIM({${F_EMAIL}}))="${normalizedEmail}"`;
@@ -65,9 +65,9 @@ exports.handler = async (event) => {
       console.log("[send-login-code] Airtable patch failed:", patchRes.status, errData);
       return { statusCode: 502, headers, body: JSON.stringify({ error: "Failed to store code", detail: errData }) };
     }
-    console.log("[send-login-code] code stored in Airtable; calling SendGrid...");
+    console.log("[send-login-code] code stored in Airtable; calling Resend...");
 
-    // 4. Send email via SendGrid
+    // 4. Send email via Resend
     const fields = record.fields || {};
     const firstName = (fields["First Name"] || (fields["Name"] || "").split(" ")[0] || "").trim();
     const greeting = firstName ? `Hi ${firstName},` : "Hi,";
@@ -99,23 +99,21 @@ If you didn't request this code, you can safely ignore this email.
   <p style="margin: 0; font-size: 13px; color: #A0A0A0;">— Prowess Project</p>
 </div>`;
 
-    const sgRes = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${sendgridKey}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email: normalizedEmail }] }],
-        from: { email: FROM_EMAIL, name: FROM_NAME },
+        from: `${FROM_NAME} <${FROM_EMAIL}>`,
+        to: [normalizedEmail],
         subject: "Your Prowess Portal sign-in code",
-        content: [
-          { type: "text/plain", value: plainText },
-          { type: "text/html", value: html },
-        ],
+        html,
+        text: plainText,
       }),
     });
-    const sgText = await sgRes.text();
-    console.log("[send-login-code] SendGrid response:", sgRes.status, "x-message-id:", sgRes.headers.get("x-message-id"), "body:", sgText.slice(0, 500));
-    if (!sgRes.ok) {
-      return { statusCode: 502, headers, body: JSON.stringify({ error: "SendGrid send failed", detail: sgText }) };
+    const resendText = await resendRes.text();
+    console.log("[send-login-code] Resend response:", resendRes.status, "body:", resendText.slice(0, 500));
+    if (!resendRes.ok) {
+      return { statusCode: 502, headers, body: JSON.stringify({ error: "Resend send failed", detail: resendText }) };
     }
 
     console.log("[send-login-code] success — code emailed to", normalizedEmail);
