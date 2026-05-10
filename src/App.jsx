@@ -1493,7 +1493,7 @@ export default function App() {
             <div className="hero"><div className="hero-title">OBM Profile Portal</div><div className="hero-sub">Manage your profile and track your matched opportunities</div></div>
             <div className="auth">
               <h1 className="auth-title">Sign In</h1>
-              <p className="auth-sub">Enter your email and we'll send you a 6-digit code to sign in.</p>
+              <p className="auth-sub">Use the same email you sign in with for <strong>OBM University</strong>. We'll send you a 6-digit code.</p>
               {err && <div className="err">{err}</div>}
               {notFound && (
                 <div className="warn" style={{marginBottom:20}}>
