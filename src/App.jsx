@@ -2113,16 +2113,6 @@ export default function App() {
                     </span>
                   </div>
 
-                  {/* TEMP DEBUG — fields on the first awaiting record so we can identify the role-name field */}
-                  <details style={{background:"rgba(255,255,255,.6)",border:"1px dashed rgba(176,125,42,.4)",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:11}}>
-                    <summary style={{cursor:"pointer",fontFamily:"ui-monospace,Menlo,Consolas,monospace",color:"#8A5E1A"}}>Debug: fields on this record (paste back to dev)</summary>
-                    <div style={{marginTop:8,fontFamily:"ui-monospace,Menlo,Consolas,monospace",color:"#1A1A1A",lineHeight:1.6}}>
-                      {Object.entries(awaitingRoles[0].fields).map(([k, v]) => (
-                        <div key={k}><strong>{k}:</strong> {Array.isArray(v) ? `Array(${v.length})` : String(v ?? "null").slice(0, 80)}</div>
-                      ))}
-                    </div>
-                  </details>
-
                   <p style={{fontSize:14,color:"#1A1A1A",lineHeight:1.55,marginBottom:14}}>
                     Prowess emailed you about {awaitingRoles.length === 1 ? "this role" : "these roles"}. Tap <strong>Apply</strong> to respond directly here, or reply to the email — either way works.
                   </p>
@@ -2130,7 +2120,7 @@ export default function App() {
                     {awaitingRoles.map(r => {
                       const f = r.fields;
                       const jobUrl = f["Job board link"];
-                      const roleName = f["Company"] || f["Client Name"] || f["Role Title"] || "";
+                      const roleName = f["Organization"] || f["Company"] || f["Client Name"] || f["Role Title"] || "";
                       const applyUrl = buildApplyUrl({ roleName, email });
                       return (
                         <div key={r.id} style={{background:"#fff",border:"1px solid rgba(245,158,11,.35)",borderRadius:8,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -2171,7 +2161,7 @@ export default function App() {
                       <div key={r.id} style={{marginBottom:12}}>
                         <div className="role-card" style={showFeedback ? {marginBottom:0,borderRadius:"8px 8px 0 0",borderBottom:"none"} : {marginBottom:0}}>
                           <div>
-                            <div className="rn">{f["Company"]||f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
+                            <div className="rn">{f["Organization"]||f["Company"]||f["Client Name"]||f["Role Title"]||"Ops Partner Role"}</div>
                             <div className="rm">{f["Industry"]||""}{f[F_MATCH_SCORE]?` · ${f[F_MATCH_SCORE]}% match`:""}{r.createdTime?` · Sent ${new Date(r.createdTime).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`:""}</div>
                             {jobUrl && (
                               <a href={jobUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:6,fontSize:13,color:"#5EA8A1",fontWeight:600,textDecoration:"none"}}>
