@@ -2144,7 +2144,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {!roles.length
+              {!roles.length && !awaitingRoles.length
                 ? <div className="card" style={{textAlign:"center",padding:"48px 24px"}}><div style={{fontSize:32,marginBottom:12}}>🔍</div><p style={{color:"#6B6B6B",fontSize:15,lineHeight:1.6,maxWidth:440,margin:"0 auto"}}>No matches yet. The stronger your profile, the more often you'll be in the top picks Prowess emails when a role lands.</p></div>
                 : roles.map(r => {
                     const f = r.fields;
