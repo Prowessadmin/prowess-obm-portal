@@ -1059,11 +1059,14 @@ export default function App() {
   const celebratingBadge = celebrationQueue[0] || null;
 
   // Detect newly-earned badges and queue celebrations
+  // Wait for stage to settle on profile/welcome — during "loading" we get many
+  // intermediate state updates that would each look like fresh "new" badges.
   useEffect(() => {
     if (!obm) return;
+    if (stage !== "profile" && stage !== "welcome") return;
     const earned = earnedBadgeIds(profile, spotlight);
     if (earnedSnapshot === null) {
-      // First snapshot after login — don't celebrate, just record
+      // First stable snapshot after login — record without celebrating
       setEarnedSnapshot(earned);
       return;
     }
@@ -1071,11 +1074,10 @@ export default function App() {
     if (newlyEarned.length) {
       setCelebrationQueue(q => [...q, ...newlyEarned]);
     }
-    // Update snapshot if it actually changed (avoid re-trigger loops)
     if (earned.size !== earnedSnapshot.size || newlyEarned.length || [...earnedSnapshot].some(id => !earned.has(id))) {
       setEarnedSnapshot(earned);
     }
-  }, [profile, spotlight, obm]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profile, spotlight, obm, stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fire confetti each time a celebration becomes active
   useEffect(() => {
