@@ -219,29 +219,25 @@ async function getMatches(pmId) {
   )`;
   const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc`);
-  console.log(`[Matches] PM ${pmId} → ${d.records?.length || 0} role(s) after response-yes filter`);
+  const records = d.records || [];
 
-  // Debug: if zero results, fetch all linked rows so we can see what's there
-  if (!d.records?.length) {
+  let debugLinked = null;
+  if (!records.length) {
     try {
       const debugFormula = `FIND("${pmId}", ARRAYJOIN({PM Profile}, ","))`;
       const dbg = await atFetch(`/${TBL_MATCHING}?filterByFormula=${encodeURIComponent(debugFormula)}&maxRecords=25`);
-      const all = dbg.records || [];
-      console.log(`[Matches Debug] PM ${pmId} → ${all.length} total Matching record(s) linked, regardless of status:`);
-      all.forEach((r, i) => {
-        console.log(
-          `  ${i + 1}. id=${r.id}`,
-          "Application status:", JSON.stringify(r.fields["Application status"]),
-          "| Candidate selection:", JSON.stringify(r.fields["Candidate selection"]),
-          "| Trigger email:", JSON.stringify(r.fields["❇️ Trigger email to talent"]),
-        );
-      });
+      debugLinked = (dbg.records || []).map(r => ({
+        id: r.id,
+        applicationStatus: r.fields["Application status"] ?? null,
+        candidateSelection: r.fields["Candidate selection"] ?? null,
+        triggerEmail: r.fields["❇️ Trigger email to talent"] ?? null,
+        clientName: r.fields["Client Name"] ?? r.fields["Role Title"] ?? null,
+      }));
     } catch (e) {
       console.warn("[Matches Debug] Could not fetch debug rows:", e);
     }
   }
-
-  return d.records || [];
+  return { records, debugLinked };
 }
 
 async function getSpotlight(email) {
@@ -953,6 +949,7 @@ export default function App() {
   const [spotlightDraft, setSpotlightDraft] = useState({});
   const [photoUploading, setPhotoUploading] = useState(false);
   const [newRolesCount, setNewRolesCount] = useState(0);
+  const [matchesDebug, setMatchesDebug] = useState(null);
   const [showBadgeInfo, setShowBadgeInfo] = useState(false);
 
   async function uploadPhoto() {
@@ -1046,11 +1043,13 @@ export default function App() {
       setPOpts(p); setSOpts(s); setTOpts(t); setIndOpts(indRec);
       if (!rec) { setNotFound(true); setStage("email"); return; }
       setObm(rec);
-      const [m, spot] = await Promise.all([
+      const [matchResult, spot] = await Promise.all([
         getMatches(rec.id),
         getSpotlight(email.toLowerCase().trim()).catch(() => null),
       ]);
+      const m = matchResult.records;
       setRoles(m);
+      setMatchesDebug(matchResult.debugLinked);
       setSpotlight(spot);
       setSpotlightLoaded(true);
       // "New since last visit" tracking via localStorage
@@ -1950,6 +1949,26 @@ export default function App() {
                 <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:4}}>How matching works</strong>
                 When a new role comes in, Prowess's algorithm scores every OBM and emails the top picks. The roles you've been picked for show up here — you don't need to apply or chase.
               </div>
+              {!roles.length && matchesDebug && matchesDebug.length > 0 && (
+                <div style={{background:"#FFF8EC",border:"1px solid rgba(176,125,42,.4)",borderRadius:8,padding:"16px 20px",marginBottom:16,fontSize:13,lineHeight:1.55}}>
+                  <strong style={{fontFamily:"Raleway,sans-serif",display:"block",marginBottom:6,color:"#8A5E1A"}}>
+                    Debug · {matchesDebug.length} Matching record{matchesDebug.length===1?"":"s"} linked to your profile, but none have Application status = "response yes"
+                  </strong>
+                  <div style={{color:"#6B6B6B",marginBottom:10}}>
+                    Roles only show in My Roles after the OBM has responded yes. Below is what we found in the Matching table for diagnostic purposes — share this with the dev team if it looks wrong.
+                  </div>
+                  <ul style={{margin:0,padding:0,listStyle:"none",display:"grid",gap:6}}>
+                    {matchesDebug.map((r, i) => (
+                      <li key={r.id} style={{padding:"8px 12px",background:"rgba(255,255,255,.6)",border:"1px solid rgba(176,125,42,.2)",borderRadius:6,fontFamily:"ui-monospace,Menlo,Consolas,monospace",fontSize:12,color:"#1A1A1A"}}>
+                        <strong>{i+1}.</strong> {r.clientName || "(no client name)"} ·{" "}
+                        Application status: <code>{JSON.stringify(r.applicationStatus)}</code> ·{" "}
+                        Candidate selection: <code>{JSON.stringify(r.candidateSelection)}</code> ·{" "}
+                        Trigger email: <code>{JSON.stringify(r.triggerEmail)}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {!roles.length
                 ? <div className="card" style={{textAlign:"center",padding:"48px 24px"}}><div style={{fontSize:32,marginBottom:12}}>🔍</div><p style={{color:"#6B6B6B",fontSize:15,lineHeight:1.6,maxWidth:440,margin:"0 auto"}}>No matches yet. The stronger your profile, the more often you'll be in the top picks Prowess emails when a role lands.</p></div>
                 : roles.map(r => {
