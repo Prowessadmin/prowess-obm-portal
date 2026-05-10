@@ -213,26 +213,32 @@ async function findByEmail(email) {
 }
 
 async function getMatches(pmId) {
-  const formula = `AND(
-    FIND("${pmId}", ARRAYJOIN({PM Profile}, ",")),
-    LOWER(TRIM({Application status})) = "response yes"
-  )`;
+  // Fetch response-yes rows server-side, then filter client-side by the PM Profile linked-field array.
+  // (We can't filter by record ID in the Airtable formula — ARRAYJOIN of a linked field returns the
+  // primary-field text of the linked records, not record IDs, so FIND can't see the ID.)
+  const formula = `LOWER(TRIM({Application status})) = "response yes"`;
   const f = encodeURIComponent(formula);
-  const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc`);
-  const records = d.records || [];
+  const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc&maxRecords=200`);
+  const all = d.records || [];
+  const records = all.filter(r => {
+    const linked = r.fields["PM Profile"];
+    return Array.isArray(linked) && linked.includes(pmId);
+  });
 
   let debugLinked = null;
   if (!records.length) {
+    // Pull a wider sample (any status) and find ones linked to this PM Profile, so we can show what's in Airtable
     try {
-      const debugFormula = `FIND("${pmId}", ARRAYJOIN({PM Profile}, ","))`;
-      const dbg = await atFetch(`/${TBL_MATCHING}?filterByFormula=${encodeURIComponent(debugFormula)}&maxRecords=25`);
-      debugLinked = (dbg.records || []).map(r => ({
-        id: r.id,
-        applicationStatus: r.fields["Application status"] ?? null,
-        candidateSelection: r.fields["Candidate selection"] ?? null,
-        triggerEmail: r.fields["❇️ Trigger email to talent"] ?? null,
-        clientName: r.fields["Client Name"] ?? r.fields["Role Title"] ?? null,
-      }));
+      const dbg = await atFetch(`/${TBL_MATCHING}?maxRecords=200&sort[0][field]=Created&sort[0][direction]=desc`);
+      debugLinked = (dbg.records || [])
+        .filter(r => Array.isArray(r.fields["PM Profile"]) && r.fields["PM Profile"].includes(pmId))
+        .map(r => ({
+          id: r.id,
+          applicationStatus: r.fields["Application status"] ?? null,
+          candidateSelection: r.fields["Candidate selection"] ?? null,
+          triggerEmail: r.fields["❇️ Trigger email to talent"] ?? null,
+          clientName: r.fields["Client Name"] ?? r.fields["Role Title"] ?? null,
+        }));
     } catch (e) {
       console.warn("[Matches Debug] Could not fetch debug rows:", e);
     }
