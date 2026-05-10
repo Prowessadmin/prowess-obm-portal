@@ -23,11 +23,15 @@ exports.handler = async (event) => {
   if (!sendgridKey) return { statusCode: 500, headers, body: JSON.stringify({ error: "SENDGRID_API_KEY not configured" }) };
 
   try {
+    console.log("[send-login-code] invoked");
     const { email } = JSON.parse(event.body || "{}");
     if (!email || typeof email !== "string" || !email.includes("@")) {
+      console.log("[send-login-code] invalid email:", email);
       return { statusCode: 400, headers, body: JSON.stringify({ error: "Valid email required" }) };
     }
     const normalizedEmail = email.toLowerCase().trim();
+    console.log("[send-login-code] email:", normalizedEmail);
+    console.log("[send-login-code] keys present — airtable:", !!airtableKey, "sendgrid:", !!sendgridKey, "sendgrid prefix:", sendgridKey?.slice(0, 4));
 
     // 1. Look up PM Profile by email
     const filterFormula = `LOWER(TRIM({${F_EMAIL}}))="${normalizedEmail}"`;
@@ -35,12 +39,15 @@ exports.handler = async (event) => {
     const lookupRes = await fetch(lookupUrl, { headers: { Authorization: `Bearer ${airtableKey}` } });
     const lookupData = await lookupRes.json();
     if (!lookupRes.ok) {
+      console.log("[send-login-code] Airtable lookup failed:", lookupRes.status, lookupData);
       return { statusCode: 502, headers, body: JSON.stringify({ error: "Airtable lookup failed", detail: lookupData }) };
     }
     const record = lookupData.records?.[0];
     if (!record) {
+      console.log("[send-login-code] no PM Profile found for email");
       return { statusCode: 404, headers, body: JSON.stringify({ error: "Email not found" }) };
     }
+    console.log("[send-login-code] found PM Profile:", record.id);
 
     // 2. Generate 6-digit code + 10-minute expiry
     const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -55,8 +62,10 @@ exports.handler = async (event) => {
     });
     if (!patchRes.ok) {
       const errData = await patchRes.json().catch(() => ({}));
+      console.log("[send-login-code] Airtable patch failed:", patchRes.status, errData);
       return { statusCode: 502, headers, body: JSON.stringify({ error: "Failed to store code", detail: errData }) };
     }
+    console.log("[send-login-code] code stored in Airtable; calling SendGrid...");
 
     // 4. Send email via SendGrid
     const fields = record.fields || {};
@@ -103,13 +112,16 @@ If you didn't request this code, you can safely ignore this email.
         ],
       }),
     });
+    const sgText = await sgRes.text();
+    console.log("[send-login-code] SendGrid response:", sgRes.status, "x-message-id:", sgRes.headers.get("x-message-id"), "body:", sgText.slice(0, 500));
     if (!sgRes.ok) {
-      const errText = await sgRes.text();
-      return { statusCode: 502, headers, body: JSON.stringify({ error: "SendGrid send failed", detail: errText }) };
+      return { statusCode: 502, headers, body: JSON.stringify({ error: "SendGrid send failed", detail: sgText }) };
     }
 
+    console.log("[send-login-code] success — code emailed to", normalizedEmail);
     return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
   } catch (err) {
+    console.log("[send-login-code] uncaught error:", err.message, err.stack);
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
