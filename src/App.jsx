@@ -995,16 +995,25 @@ export default function App() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("prowess-session");
-      if (!raw) return;
+      if (!raw) {
+        console.log("[auto-login] no session in localStorage — showing email screen");
+        return;
+      }
       const session = JSON.parse(raw);
-      if (!session?.email || !session?.expiresAt) return;
-      if (new Date(session.expiresAt) <= new Date()) {
+      if (!session?.email || !session?.expiresAt) {
+        console.log("[auto-login] malformed session, clearing");
         localStorage.removeItem("prowess-session");
         return;
       }
-      // Valid session — skip login flow entirely and load the profile
+      if (new Date(session.expiresAt) <= new Date()) {
+        console.log("[auto-login] session expired at", session.expiresAt, "— clearing");
+        localStorage.removeItem("prowess-session");
+        return;
+      }
+      console.log("[auto-login] valid session for", session.email, "— skipping login flow");
       loadProfile(session.email);
-    } catch {
+    } catch (e) {
+      console.log("[auto-login] error:", e.message);
       try { localStorage.removeItem("prowess-session"); } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
