@@ -17,19 +17,21 @@ const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty"; // OBM Spotlight Form
 const APPLY_FORM_BASE = "https://airtable.com/appaOBVteWvtxFcKr/shrKBK20co7xggD5E";
 
 function buildApplyUrl({ roleName, email }) {
-  // Shotgun the prefill across likely field names; Airtable ignores unknowns.
-  const params = new URLSearchParams();
+  // Shotgun the prefill across likely field names. Use encodeURIComponent so spaces
+  // become %20 (Airtable's prefill parser doesn't accept + as a space in field names).
+  const parts = [];
+  const enc = (k, v) => `prefill_${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
   if (roleName) {
     ["Name of Role", "Role", "Client Name", "Client", "Role Title", "Role Name", "Position"].forEach(k => {
-      params.append(`prefill_${k}`, roleName);
+      parts.push(enc(k, roleName));
     });
   }
   if (email) {
     ["Email", "OBM Email", "PM Email", "Your Email"].forEach(k => {
-      params.append(`prefill_${k}`, email);
+      parts.push(enc(k, email));
     });
   }
-  return `${APPLY_FORM_BASE}?${params.toString()}`;
+  return `${APPLY_FORM_BASE}?${parts.join("&")}`;
 }
 
 // Cloudinary unsigned upload (avatars)
