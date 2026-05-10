@@ -215,10 +215,32 @@ async function findByEmail(email) {
 async function getMatches(pmId) {
   const formula = `AND(
     FIND("${pmId}", ARRAYJOIN({PM Profile}, ",")),
-    {Application status} = "response yes"
+    LOWER(TRIM({Application status})) = "response yes"
   )`;
   const f = encodeURIComponent(formula);
   const d = await atFetch(`/${TBL_MATCHING}?filterByFormula=${f}&sort[0][field]=Created&sort[0][direction]=desc`);
+  console.log(`[Matches] PM ${pmId} → ${d.records?.length || 0} role(s) after response-yes filter`);
+
+  // Debug: if zero results, fetch all linked rows so we can see what's there
+  if (!d.records?.length) {
+    try {
+      const debugFormula = `FIND("${pmId}", ARRAYJOIN({PM Profile}, ","))`;
+      const dbg = await atFetch(`/${TBL_MATCHING}?filterByFormula=${encodeURIComponent(debugFormula)}&maxRecords=25`);
+      const all = dbg.records || [];
+      console.log(`[Matches Debug] PM ${pmId} → ${all.length} total Matching record(s) linked, regardless of status:`);
+      all.forEach((r, i) => {
+        console.log(
+          `  ${i + 1}. id=${r.id}`,
+          "Application status:", JSON.stringify(r.fields["Application status"]),
+          "| Candidate selection:", JSON.stringify(r.fields["Candidate selection"]),
+          "| Trigger email:", JSON.stringify(r.fields["❇️ Trigger email to talent"]),
+        );
+      });
+    } catch (e) {
+      console.warn("[Matches Debug] Could not fetch debug rows:", e);
+    }
+  }
+
   return d.records || [];
 }
 
@@ -902,6 +924,7 @@ export default function App() {
   const [obm, setObm]       = useState(null);
   const [roles, setRoles]   = useState([]);
   const [err, setErr]       = useState("");
+  const [notFound, setNotFound] = useState(false);
   const [tab, setTab]       = useState("profile");
   const [editing, setEditing] = useState(false);
   const [eMode, setEMode]   = useState(null); // null|"resume"|"review"|"manual"
@@ -1002,6 +1025,7 @@ export default function App() {
 
   async function login() {
     setErr("");
+    setNotFound(false);
     if (!email.includes("@")) { setErr("Please enter a valid email."); return; }
     setStage("loading");
     try {
@@ -1020,7 +1044,7 @@ export default function App() {
         findByEmail(email.toLowerCase().trim()),
       ]);
       setPOpts(p); setSOpts(s); setTOpts(t); setIndOpts(indRec);
-      if (!rec) { setErr("No profile found for that email. Contact Prowess support."); setStage("email"); return; }
+      if (!rec) { setNotFound(true); setStage("email"); return; }
       setObm(rec);
       const [m, spot] = await Promise.all([
         getMatches(rec.id),
@@ -1162,8 +1186,32 @@ export default function App() {
               <h1 className="auth-title">Sign In</h1>
               <p className="auth-sub">Enter the email associated with your Prowess OBM profile.</p>
               {err && <div className="err">{err}</div>}
+              {notFound && (
+                <div className="warn" style={{marginBottom:20}}>
+                  <strong>We couldn't find a profile for that email</strong>
+                  <p>Use the same email you sign in with for <strong>OBM University</strong> — that's the one Prowess has on file. Check for typos and try again.</p>
+                </div>
+              )}
               <div style={{marginBottom:20}}><label className="fl">Email Address</label><input className="fi" type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key==="Enter"&&login()} autoFocus /></div>
               <button className="btn btn-p" onClick={login}>Access My Profile</button>
+              {notFound && (() => {
+                const subject = "Interested in joining Prowess Project";
+                const body = `Hi Leah,\n\nI tried to sign in to the OBM Portal with ${email} but I'm not in the system yet. I'd love to learn more about joining the Prowess Project talent pool as an Online Business Manager.\n\nThanks!`;
+                const mailto = `mailto:leah@prowessproject.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                return (
+                  <div style={{marginTop:28,padding:"22px 24px",background:"#FAFFFE",border:"1px solid rgba(127,191,184,.35)",borderRadius:10}}>
+                    <div style={{fontFamily:"Raleway,sans-serif",fontWeight:700,fontSize:15,color:"#1A1A1A",marginBottom:6}}>
+                      Not a Prowess member yet?
+                    </div>
+                    <p style={{fontSize:13,color:"#6B6B6B",lineHeight:1.6,marginBottom:14}}>
+                      If you're not part of the Prowess talent pool yet but want to learn more about becoming an Online Business Manager with us, send Leah a quick note.
+                    </p>
+                    <a href={mailto} className="btn btn-p" style={{textDecoration:"none",width:"auto",display:"inline-flex"}}>
+                      📧 Email leah@prowessproject.com
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
           </>}
 
