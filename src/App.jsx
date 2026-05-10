@@ -952,7 +952,12 @@ function SkillPicker({ label, selected, options, onChange, editing, catMap }) {
 
 // ── Main App ─────────────────────────────────────────────────────
 export default function App() {
-  const [stage, setStage]   = useState("email"); // email | loading | profile | welcome
+  const [stage, setStage]   = useState("email"); // email | code-entry | loading | profile | welcome
+  const [code, setCode]     = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [email, setEmail]   = useState("");
   const [obm, setObm]       = useState(null);
   const [roles, setRoles]   = useState([]);
@@ -1058,10 +1063,64 @@ export default function App() {
     }
   }
 
-  async function login() {
-    setErr("");
-    setNotFound(false);
+  async function requestCode() {
+    setErr(""); setNotFound(false); setCodeError("");
     if (!email.includes("@")) { setErr("Please enter a valid email."); return; }
+    setSendingCode(true);
+    try {
+      const res = await fetch("/.netlify/functions/send-login-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.toLowerCase().trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 404) { setNotFound(true); return; }
+      if (!res.ok) { setErr(data.error || "Couldn't send the code. Please try again."); return; }
+      setCode("");
+      setStage("code-entry");
+      setResendCooldown(30);
+      const t = setInterval(() => {
+        setResendCooldown(s => {
+          if (s <= 1) { clearInterval(t); return 0; }
+          return s - 1;
+        });
+      }, 1000);
+    } catch (e) {
+      setErr("Couldn't reach the server: " + e.message);
+    } finally {
+      setSendingCode(false);
+    }
+  }
+
+  async function verifyAndLogin() {
+    setCodeError("");
+    const trimmed = code.trim();
+    if (!/^\d{6}$/.test(trimmed)) {
+      setCodeError("Enter the 6-digit code from your email.");
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await fetch("/.netlify/functions/verify-login-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.toLowerCase().trim(), code: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCodeError(data.error || "Invalid code.");
+        return;
+      }
+      await loadProfile();
+    } catch (e) {
+      setCodeError("Couldn't verify: " + e.message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function loadProfile() {
+    setErr("");
     setStage("loading");
     try {
       // Load taxonomy fresh every login
@@ -1212,7 +1271,7 @@ export default function App() {
       <div className="wrap">
         <header className="hdr">
           <div><div className="logo">Prowess Project</div><div className="logo-sub">OBM Profile Portal</div></div>
-          {obm && <button className="btn btn-g btn-sm" onClick={() => { setStage("email"); setObm(null); setEmail(""); reset(); }}>Sign Out</button>}
+          {obm && <button className="btn btn-g btn-sm" onClick={() => { setStage("email"); setObm(null); setEmail(""); setCode(""); setCodeError(""); setNotFound(false); reset(); }}>Sign Out</button>}
         </header>
         <div className="teal-bar"></div>
         <main className="main">
@@ -1222,7 +1281,7 @@ export default function App() {
             <div className="hero"><div className="hero-title">OBM Profile Portal</div><div className="hero-sub">Manage your profile and track your matched opportunities</div></div>
             <div className="auth">
               <h1 className="auth-title">Sign In</h1>
-              <p className="auth-sub">Enter the email associated with your Prowess OBM profile.</p>
+              <p className="auth-sub">Enter your email and we'll send you a 6-digit code to sign in.</p>
               {err && <div className="err">{err}</div>}
               {notFound && (
                 <div className="warn" style={{marginBottom:20}}>
@@ -1230,8 +1289,10 @@ export default function App() {
                   <p>Use the same email you sign in with for <strong>OBM University</strong> — that's the one Prowess has on file. Check for typos and try again.</p>
                 </div>
               )}
-              <div style={{marginBottom:20}}><label className="fl">Email Address</label><input className="fi" type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key==="Enter"&&login()} autoFocus /></div>
-              <button className="btn btn-p" onClick={login}>Access My Profile</button>
+              <div style={{marginBottom:20}}><label className="fl">Email Address</label><input className="fi" type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key==="Enter"&&!sendingCode&&requestCode()} autoFocus /></div>
+              <button className="btn btn-p" onClick={requestCode} disabled={sendingCode}>
+                {sendingCode ? <><span className="spin"></span> Sending code...</> : "Email Me a Sign-In Code"}
+              </button>
               {notFound && (() => {
                 const subject = "Interested in joining Prowess Project";
                 const body = `Hi Leah,\n\nI tried to sign in to the OBM Portal with ${email} but I'm not in the system yet. I'd love to learn more about joining the Prowess Project talent pool as an Online Business Manager.\n\nThanks!`;
@@ -1250,6 +1311,52 @@ export default function App() {
                   </div>
                 );
               })()}
+            </div>
+          </>}
+
+          {/* CODE ENTRY */}
+          {stage === "code-entry" && <>
+            <div className="hero"><div className="hero-title">Check Your Email</div><div className="hero-sub">We sent a 6-digit code to {email}</div></div>
+            <div className="auth">
+              <h1 className="auth-title">Enter Your Code</h1>
+              <p className="auth-sub">The code expires in 10 minutes. Check your spam folder if you don't see it.</p>
+              {codeError && <div className="err">{codeError}</div>}
+              <div style={{marginBottom:20}}>
+                <label className="fl">6-Digit Code</label>
+                <input
+                  className="fi"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="123456"
+                  value={code}
+                  onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={e => e.key === "Enter" && !verifying && verifyAndLogin()}
+                  autoFocus
+                  style={{fontSize:22,letterSpacing:".4em",textAlign:"center",fontFamily:"ui-monospace,Menlo,Consolas,monospace"}}
+                />
+              </div>
+              <button className="btn btn-p" onClick={verifyAndLogin} disabled={verifying || code.length !== 6}>
+                {verifying ? <><span className="spin"></span> Verifying...</> : "Verify & Sign In"}
+              </button>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18,fontSize:13}}>
+                <button
+                  type="button"
+                  onClick={() => { setStage("email"); setCode(""); setCodeError(""); }}
+                  style={{background:"none",border:"none",padding:0,cursor:"pointer",color:"#6B6B6B",textDecoration:"underline"}}
+                >
+                  ← Use a different email
+                </button>
+                <button
+                  type="button"
+                  onClick={requestCode}
+                  disabled={resendCooldown > 0 || sendingCode}
+                  style={{background:"none",border:"none",padding:0,cursor: resendCooldown > 0 || sendingCode ? "not-allowed" : "pointer",color:resendCooldown > 0 || sendingCode ? "#A0A0A0" : "#5EA8A1",fontWeight:600,textDecoration:resendCooldown > 0 ? "none" : "underline"}}
+                >
+                  {sendingCode ? "Sending..." : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+                </button>
+              </div>
             </div>
           </>}
 
