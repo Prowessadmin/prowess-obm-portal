@@ -1,15 +1,10 @@
-const crypto = require("crypto");
+const { signToken } = require("./_auth");
+const { checkRateLimit } = require("./_rate-limit");
 
 const AIRTABLE_BASE = "appaOBVteWvtxFcKr";
 const TBL_PM = "tbl9I3xX3zj9b7FqX";
 const F_EMAIL = "emai2";
 const TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
-
-function signToken(payload, secret) {
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
-  return `${payloadB64}.${sig}`;
-}
 
 exports.handler = async (event) => {
   const headers = {
@@ -36,6 +31,20 @@ exports.handler = async (event) => {
     }
     const normalizedEmail = String(email).toLowerCase().trim();
     const enteredCode = String(code).trim();
+
+    // Anti-brute-force: limit verify attempts per email
+    const rl = await checkRateLimit({
+      key: `verify-login-code:email:${normalizedEmail}`,
+      max: 10,
+      windowSeconds: 600,
+    });
+    if (!rl.allowed) {
+      return {
+        statusCode: 429,
+        headers: { ...headers, "Retry-After": String(rl.retryAfter) },
+        body: JSON.stringify({ error: "Too many attempts. Please wait a few minutes and try again." }),
+      };
+    }
 
     // 1. Look up PM Profile
     const filterFormula = `LOWER(TRIM({${F_EMAIL}}))="${normalizedEmail}"`;

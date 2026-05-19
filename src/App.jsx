@@ -331,9 +331,13 @@ async function saveProfile(recordId, profile) {
 
 // ── Sage resume parser ─────────────────────────────────────────
 async function parseResume(text, pOpts, sOpts, tOpts, indOpts) {
+  const token = getSessionToken();
   const res = await fetch("/.netlify/functions/claude-proxy", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1500,

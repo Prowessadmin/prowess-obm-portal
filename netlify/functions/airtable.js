@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+const { verifyToken, getBearerToken } = require("./_auth");
 
 const AIRTABLE_BASE = "appaOBVteWvtxFcKr";
 const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE}`;
@@ -21,25 +21,6 @@ const WRITE_ALLOWED = {
 };
 
 const SENSITIVE_FIELDS = ["Login Code", "Login Code Expires"];
-
-function verifyToken(token, secret) {
-  if (!token || typeof token !== "string") return null;
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  const [payloadB64, sig] = parts;
-  const expectedSig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
-  const sigBuf = Buffer.from(sig, "base64url");
-  const expectedBuf = Buffer.from(expectedSig, "base64url");
-  if (sigBuf.length !== expectedBuf.length) return null;
-  if (!crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
 
 function stripSensitive(record) {
   if (record && record.fields) {
@@ -66,12 +47,11 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: "Server misconfigured" }) };
   }
 
-  const authHeader = event.headers.authorization || event.headers.Authorization || "";
-  const m = authHeader.match(/^Bearer\s+(.+)$/);
-  if (!m) {
+  const token = getBearerToken(event);
+  if (!token) {
     return { statusCode: 401, headers, body: JSON.stringify({ error: "Unauthorized" }) };
   }
-  const session = verifyToken(m[1], secret);
+  const session = verifyToken(token, secret);
   if (!session) {
     return { statusCode: 401, headers, body: JSON.stringify({ error: "Invalid or expired session" }) };
   }

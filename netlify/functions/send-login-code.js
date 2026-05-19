@@ -1,3 +1,5 @@
+const { checkRateLimit, clientIp } = require("./_rate-limit");
+
 const AIRTABLE_BASE = "appaOBVteWvtxFcKr";
 const TBL_PM = "tbl9I3xX3zj9b7FqX";
 const F_EMAIL = "emai2";
@@ -23,15 +25,40 @@ exports.handler = async (event) => {
   if (!resendKey) return { statusCode: 500, headers, body: JSON.stringify({ error: "RESEND_API_KEY not configured" }) };
 
   try {
-    console.log("[send-login-code] invoked");
+    // Per-IP limit: stop scripted enumeration
+    const ip = clientIp(event);
+    const ipRL = await checkRateLimit({
+      key: `send-login-code:ip:${ip}`,
+      max: 10,
+      windowSeconds: 60,
+    });
+    if (!ipRL.allowed) {
+      return {
+        statusCode: 429,
+        headers: { ...headers, "Retry-After": String(ipRL.retryAfter) },
+        body: JSON.stringify({ error: "Too many requests. Please wait a moment and try again." }),
+      };
+    }
+
     const { email } = JSON.parse(event.body || "{}");
     if (!email || typeof email !== "string" || !email.includes("@")) {
-      console.log("[send-login-code] invalid email:", email);
       return { statusCode: 400, headers, body: JSON.stringify({ error: "Valid email required" }) };
     }
     const normalizedEmail = email.toLowerCase().trim();
-    console.log("[send-login-code] email:", normalizedEmail);
-    console.log("[send-login-code] keys present — airtable:", !!airtableKey, "resend:", !!resendKey, "resend prefix:", resendKey?.slice(0, 4));
+
+    // Per-email limit: stop spam-bombing a specific inbox
+    const emailRL = await checkRateLimit({
+      key: `send-login-code:email:${normalizedEmail}`,
+      max: 5,
+      windowSeconds: 600,
+    });
+    if (!emailRL.allowed) {
+      return {
+        statusCode: 429,
+        headers: { ...headers, "Retry-After": String(emailRL.retryAfter) },
+        body: JSON.stringify({ error: "Too many sign-in codes requested. Please wait a few minutes." }),
+      };
+    }
 
     // 1. Look up PM Profile by email
     const filterFormula = `LOWER(TRIM({${F_EMAIL}}))="${normalizedEmail}"`;
