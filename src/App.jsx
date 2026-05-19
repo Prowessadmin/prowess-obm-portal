@@ -196,7 +196,22 @@ const F_MATCH_STATUS = "fldmcFMJQ5uPCCrsE";
 const F_MATCH_SCORE  = "fldxXrk9SIv1O8I44";
 
 // ── Airtable direct fetch (via Netlify proxy to keep key server-side) ──
+function getSessionToken() {
+  try {
+    const s = JSON.parse(localStorage.getItem("prowess-session") || "{}");
+    return s.token || "";
+  } catch { return ""; }
+}
+
+function handleUnauthorized() {
+  try { localStorage.removeItem("prowess-session"); } catch {}
+  // Send the user back to the login screen on next render
+  if (typeof window !== "undefined") window.location.reload();
+}
+
 async function atFetch(path, opts = {}) {
+  const token = getSessionToken();
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
   const isWrite = opts.method && opts.method !== "GET";
 
   if (isWrite) {
@@ -204,13 +219,14 @@ async function atFetch(path, opts = {}) {
     const [basePath] = path.split("?");
     const res = await fetch("/.netlify/functions/airtable", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader },
       body: JSON.stringify({
         method: opts.method,
         path: basePath,
         body: opts.body ? JSON.parse(opts.body) : undefined,
       }),
     });
+    if (res.status === 401) { handleUnauthorized(); throw new Error("Session expired"); }
     const data = await res.json();
     if (!res.ok) throw new Error(`Airtable ${res.status}: ${JSON.stringify(data)}`);
     return data;
@@ -219,7 +235,8 @@ async function atFetch(path, opts = {}) {
     const [basePath, qp] = path.split("?");
     const params = new URLSearchParams({ path: basePath });
     if (qp) new URLSearchParams(qp).forEach((v, k) => params.append(k, v));
-    const res = await fetch(`/.netlify/functions/airtable?${params}`);
+    const res = await fetch(`/.netlify/functions/airtable?${params}`, { headers: authHeader });
+    if (res.status === 401) { handleUnauthorized(); throw new Error("Session expired"); }
     const data = await res.json();
     if (!res.ok) throw new Error(`Airtable ${res.status}: ${JSON.stringify(data)}`);
     return data;
@@ -1036,8 +1053,8 @@ export default function App() {
         return;
       }
       const session = JSON.parse(raw);
-      if (!session?.email || !session?.expiresAt) {
-        console.log("[auto-login] malformed session, clearing");
+      if (!session?.email || !session?.expiresAt || !session?.token) {
+        console.log("[auto-login] missing token or malformed session, clearing");
         localStorage.removeItem("prowess-session");
         return;
       }
@@ -1236,6 +1253,14 @@ export default function App() {
         setCodeError(data.error || "Invalid code.");
         return;
       }
+      // Save the session token issued by verify-login-code
+      try {
+        localStorage.setItem("prowess-session", JSON.stringify({
+          email: email.toLowerCase().trim(),
+          token: data.token || "",
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }));
+      } catch {}
       await loadProfile();
     } catch (e) {
       setCodeError("Couldn't verify: " + e.message);
@@ -1250,10 +1275,12 @@ export default function App() {
     setErr("");
     setStage("loading");
     try {
-      // Persist a 30-day session
+      // Persist a 30-day session — preserve the token issued at verify-login time
       try {
+        const existing = JSON.parse(localStorage.getItem("prowess-session") || "{}");
         localStorage.setItem("prowess-session", JSON.stringify({
           email: e,
+          token: existing.token || "",
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         }));
       } catch {}

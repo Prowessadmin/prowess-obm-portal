@@ -1,6 +1,15 @@
+const crypto = require("crypto");
+
 const AIRTABLE_BASE = "appaOBVteWvtxFcKr";
 const TBL_PM = "tbl9I3xX3zj9b7FqX";
 const F_EMAIL = "emai2";
+const TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
+function signToken(payload, secret) {
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
+  return `${payloadB64}.${sig}`;
+}
 
 exports.handler = async (event) => {
   const headers = {
@@ -16,7 +25,9 @@ exports.handler = async (event) => {
   }
 
   const airtableKey = process.env.AIRTABLE_KEY;
+  const authSecret = process.env.AUTH_SECRET;
   if (!airtableKey) return { statusCode: 500, headers, body: JSON.stringify({ error: "AIRTABLE_KEY not configured" }) };
+  if (!authSecret) return { statusCode: 500, headers, body: JSON.stringify({ error: "AUTH_SECRET not configured" }) };
 
   try {
     const { email, code } = JSON.parse(event.body || "{}");
@@ -59,7 +70,14 @@ exports.handler = async (event) => {
       body: JSON.stringify({ fields: { "Login Code": "", "Login Code Expires": null } }),
     });
 
-    return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
+    // 3. Issue a signed session token
+    const token = signToken({
+      recordId: record.id,
+      email: normalizedEmail,
+      exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
+    }, authSecret);
+
+    return { statusCode: 200, headers, body: JSON.stringify({ ok: true, token }) };
   } catch (err) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }

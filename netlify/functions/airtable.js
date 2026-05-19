@@ -1,10 +1,57 @@
+const crypto = require("crypto");
+
 const AIRTABLE_BASE = "appaOBVteWvtxFcKr";
 const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE}`;
+
+const TBL_PM        = "tbl9I3xX3zj9b7FqX";
+const TBL_MATCHING  = "tblIoFOOL5BShC3bg";
+const TBL_PRIMARY   = "tbll8MKHuKiM7YciK";
+const TBL_SECONDARY = "tbljqaeAndASfnyc0";
+const TBL_TECH      = "tbliJ5Q4yU0m8EnsG";
+const TBL_INDUSTRY  = "tbl2qU124blP8q1nv";
+const TBL_SPOTLIGHT = "tbl7GmdnkpbjzqXty";
+
+const ALLOWED_TABLES = new Set([
+  TBL_PM, TBL_MATCHING, TBL_PRIMARY, TBL_SECONDARY, TBL_TECH, TBL_INDUSTRY, TBL_SPOTLIGHT,
+]);
+
+const WRITE_ALLOWED = {
+  [TBL_PM]:        new Set(["PATCH"]),
+  [TBL_SPOTLIGHT]: new Set(["PATCH", "POST"]),
+};
+
+const SENSITIVE_FIELDS = ["Login Code", "Login Code Expires"];
+
+function verifyToken(token, secret) {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [payloadB64, sig] = parts;
+  const expectedSig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
+  const sigBuf = Buffer.from(sig, "base64url");
+  const expectedBuf = Buffer.from(expectedSig, "base64url");
+  if (sigBuf.length !== expectedBuf.length) return null;
+  if (!crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function stripSensitive(record) {
+  if (record && record.fields) {
+    for (const f of SENSITIVE_FIELDS) delete record.fields[f];
+  }
+  return record;
+}
 
 exports.handler = async (event) => {
   const headers = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Content-Type": "application/json",
   };
@@ -14,17 +61,25 @@ exports.handler = async (event) => {
   }
 
   const key = process.env.AIRTABLE_KEY;
-  console.log("Key preview:", key ? `${key.slice(0,6)}...${key.slice(-4)}` : "MISSING", "| Length:", key ? key.length : 0);
+  const secret = process.env.AUTH_SECRET;
+  if (!key || !secret) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "Server misconfigured" }) };
+  }
 
-  if (!key) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "AIRTABLE_KEY not configured" }) };
+  const authHeader = event.headers.authorization || event.headers.Authorization || "";
+  const m = authHeader.match(/^Bearer\s+(.+)$/);
+  if (!m) {
+    return { statusCode: 401, headers, body: JSON.stringify({ error: "Unauthorized" }) };
+  }
+  const session = verifyToken(m[1], secret);
+  if (!session) {
+    return { statusCode: 401, headers, body: JSON.stringify({ error: "Invalid or expired session" }) };
   }
 
   try {
     let airtableMethod, airtablePath, airtableBody, queryParams;
 
     if (event.httpMethod === "GET") {
-      // GET: path and query params come from query string
       const params = event.queryStringParameters || {};
       airtablePath = params.path || "";
       airtableMethod = "GET";
@@ -32,17 +87,31 @@ exports.handler = async (event) => {
       delete remaining.path;
       queryParams = new URLSearchParams(remaining).toString();
     } else {
-      // POST: everything comes from JSON body
-      // { method: "PATCH"|"POST"|"GET", path: "/TABLE/RECORD", body: {...}, query: "..." }
       const parsed = JSON.parse(event.body || "{}");
-      airtableMethod = parsed.method || "POST";
+      airtableMethod = (parsed.method || "POST").toUpperCase();
       airtablePath = parsed.path || "";
       airtableBody = parsed.body ? JSON.stringify(parsed.body) : undefined;
       queryParams = parsed.query || "";
     }
 
-    const url = `${AIRTABLE_URL}${airtablePath}${queryParams ? "?" + queryParams : ""}`;
-    console.log("→", airtableMethod, url);
+    if (!["GET", "POST", "PATCH"].includes(airtableMethod)) {
+      return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+    }
+
+    const normalizedPath = airtablePath.startsWith("/") ? airtablePath : "/" + airtablePath;
+    const tableId = normalizedPath.split("/")[1] || "";
+    if (!ALLOWED_TABLES.has(tableId)) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Forbidden table" }) };
+    }
+
+    if (airtableMethod !== "GET") {
+      const allowed = WRITE_ALLOWED[tableId];
+      if (!allowed || !allowed.has(airtableMethod)) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: "Forbidden operation" }) };
+      }
+    }
+
+    const url = `${AIRTABLE_URL}${normalizedPath}${queryParams ? "?" + queryParams : ""}`;
 
     const fetchOpts = {
       method: airtableMethod,
@@ -57,14 +126,17 @@ exports.handler = async (event) => {
 
     const res = await fetch(url, fetchOpts);
     const text = await res.text();
-    console.log("Status:", res.status, "| Preview:", text.slice(0, 200));
 
     let data;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
+    if (data && typeof data === "object") {
+      if (Array.isArray(data.records)) data.records = data.records.map(stripSensitive);
+      else if (data.fields) stripSensitive(data);
+    }
+
     return { statusCode: res.status, headers, body: JSON.stringify(data) };
   } catch (err) {
-    console.log("ERROR:", err.message);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "Request failed" }) };
   }
 };
